@@ -7,7 +7,7 @@ Vite + React console for the relay.
 ```bash
 npm install
 npm run dev
-# open http://localhost:5173/?token=dev
+# open http://localhost:5173/
 ```
 
 Vite proxies `/ws` and `/api` to `localhost:8787`, so the relay must be running.
@@ -20,10 +20,12 @@ npm run build
 
 The relay serves `dist/` at <http://localhost:8787/>.
 
-## Token
+## Identity
 
-The token comes from `?token=...`, then `localStorage.rc_token`, then `dev`.
-It is sent in the WebSocket `hello` message, not as a header.
+There is no token. The agent derives a stable device ID from `ANDROID_ID` and
+sends it in the `hello` message; the admin panel connects without credentials
+and selects a device by ID. Keep the relay on localhost, the LAN, or a private
+tailnet.
 
 ## Layout
 
@@ -75,5 +77,5 @@ on narrow screens.
 ## Not yet
 
 - OCR fallback
-- auth UI, TLS, per-device tokens
+- auth UI, TLS, per-device credentials
 - persistent run history

@@ -113,9 +113,8 @@ class MainActivity : ComponentActivity() {
                     device = DeviceStateReader.read(this@MainActivity)
                 }
 
-                fun connectRelay(url: String, token: String) {
+                fun connectRelay(url: String) {
                     AgentConfig.setServerUrl(this@MainActivity, url)
-                    AgentConfig.setToken(this@MainActivity, token)
                     ContextCompat.startForegroundService(
                         this@MainActivity,
                         Intent(this@MainActivity, AgentService::class.java)
@@ -284,8 +283,7 @@ class MainActivity : ComponentActivity() {
                                 status = AgentConnection.status,
                                 deviceId = AgentConnection.deviceId,
                                 initialUrl = AgentConfig.serverUrl(this@MainActivity),
-                                initialToken = AgentConfig.token(this@MainActivity),
-                                onConnect = { url, token -> connectRelay(url, token) },
+                                onConnect = { url -> connectRelay(url) },
                                 onStop = { stopRelay() }
                             )
                         }
@@ -363,12 +361,10 @@ private fun RelayCard(
     status: String,
     deviceId: String,
     initialUrl: String,
-    initialToken: String,
-    onConnect: (String, String) -> Unit,
+    onConnect: (String) -> Unit,
     onStop: () -> Unit
 ) {
     var url by remember { mutableStateOf(initialUrl) }
-    var token by remember { mutableStateOf(initialToken) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -390,13 +386,6 @@ private fun RelayCard(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            OutlinedTextField(
-                value = token,
-                onValueChange = { token = it },
-                label = { Text("Token") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
             Text(
                 status,
                 style = MaterialTheme.typography.bodySmall,
@@ -409,13 +398,13 @@ private fun RelayCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(onClick = { onConnect(url, token) }) {
+                Button(onClick = { onConnect(url) }) {
                     Text(if (connected) "Reconnect" else "Save & connect")
                 }
                 OutlinedButton(onClick = onStop) { Text("Stop") }
             }
             Text(
-                "Emulator: ws://10.0.2.2:8787/ws. Phone: ws://<host-ip>:8787/ws.",
+                "No token needed. Emulator: ws://10.0.2.2:8787/ws. Phone: ws://<host-ip>:8787/ws.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

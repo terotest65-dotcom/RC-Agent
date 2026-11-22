@@ -57,7 +57,7 @@ listing.
 ```bash
 cd web && npm install && npm run build
 cd ../server && npm install && npm start
-# open http://localhost:8787/?token=dev
+# open http://localhost:8787/
 ```
 
 On the device, open **RC Agent**, keep the relay URL

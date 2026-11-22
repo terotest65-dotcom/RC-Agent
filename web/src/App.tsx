@@ -13,11 +13,6 @@ import type {
   SnapshotMessage
 } from '../../shared/protocol'
 
-const TOKEN =
-  new URLSearchParams(window.location.search).get('token') ??
-  window.localStorage.getItem('rc_token') ??
-  'dev'
-
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
 
 const DEFAULT_MACRO = `{
@@ -320,7 +315,7 @@ export default function App() {
         retry = 0
         setConnected(true)
         appendLog(`connected to ${WS_URL}`)
-        ws.send(JSON.stringify({ t: 'hello', role: 'admin', token: TOKEN }))
+        ws.send(JSON.stringify({ t: 'hello', role: 'admin' }))
       }
       ws.onmessage = (event) => {
         try {

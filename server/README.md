@@ -19,22 +19,21 @@ npm install
 npm start
 ```
 
-Open <http://localhost:8787/?token=dev>.
+Open <http://localhost:8787/>.
 
 Environment:
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` | `8787` | HTTP + WebSocket port |
-| `RC_TOKEN` | `dev` | Shared device/admin token |
 | `WEB_DIST` | `../web/dist` | Static web build |
 
 ## Device URL
 
 - Emulator: `ws://10.0.2.2:8787/ws`
 - Real phone on the same network: `ws://<host-ip>:8787/ws`
-- Put it behind Tailscale/WireGuard for remote devices; do not expose `ws://`
-  or the `dev` token to the internet.
+- Put it behind Tailscale/WireGuard for remote devices; do not expose the
+  relay to the internet.
 
 ## Phase 3: OTP, secrets, grid
 
@@ -88,7 +87,7 @@ Environment:
 Hello:
 
 ```json
-{ "t": "hello", "role": "device", "token": "dev", "deviceId": "and_…",
+{ "t": "hello", "role": "device", "deviceId": "and_…",
   "name": "Pixel 7", "model": "Pixel 7", "android": 35, "agent": "1.0.0" }
 ```
 
@@ -104,8 +103,8 @@ URLs when the image volume grows.
 
 ## Security
 
-- Shared token only, cleartext `ws://`, no TLS yet.
-- Local/Tailscale use only.
-- The web panel has no login screen; `?token=` is the only admin credential.
-- Before any real deployment: TLS, per-device tokens, admin accounts + TOTP,
-  and a reverse proxy.
+- No token or login: the relay trusts whoever can reach the WebSocket. Device
+  identity is the generated device ID (`and_…`) shown in the agent.
+- Keep it on localhost, the LAN, or Tailscale/WireGuard; do not expose it.
+- Before any real deployment: TLS, per-device credentials, admin accounts +
+  TOTP, and a reverse proxy.

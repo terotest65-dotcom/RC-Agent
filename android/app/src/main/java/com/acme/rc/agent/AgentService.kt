@@ -215,7 +215,6 @@ class AgentService : Service() {
         val hello = JSONObject()
             .put("t", "hello")
             .put("role", "device")
-            .put("token", AgentConfig.token(this))
             .put("deviceId", AgentConfig.deviceId(this))
             .put("name", AgentConfig.deviceName())
             .put("model", Build.MODEL)

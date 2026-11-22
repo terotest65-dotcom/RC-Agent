@@ -32,7 +32,6 @@ const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
-const TOKEN = process.env.RC_TOKEN ?? 'dev'
 const SECRET_KEY = process.env.RC_SECRET_KEY ?? 'rc-dev-secret-key-change-me'
 
 interface StoredSecret {
@@ -457,11 +456,6 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.t === 'hello') {
-      if (msg.token !== TOKEN) {
-        fail('bad token')
-        ws.close()
-        return
-      }
       role = msg.role as Role
 
       if (role === 'admin') {
@@ -827,7 +821,7 @@ const heartbeat = setInterval(() => {
 
 server.listen(PORT, () => {
   log(`RC relay listening on http://0.0.0.0:${PORT}`)
-  log(`WebSocket: ws://0.0.0.0:${PORT}/ws  token=${TOKEN}`)
+  log(`WebSocket: ws://0.0.0.0:${PORT}/ws`)
   log(`Serving web build from ${WEB_DIST}`)
   log(`${macros.size} macro(s), ${runs.size} run(s) in memory`)
 })
