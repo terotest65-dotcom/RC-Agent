@@ -107,6 +107,8 @@ class RcAccessibilityService : AccessibilityService() {
             return@withContext errorSnapshot(started, screenshotError(t))
         } ?: return@withContext errorSnapshot(started, "SCREENSHOT_NULL")
 
+        val originalWidth = bitmap.width
+        val originalHeight = bitmap.height
         val scaled = downscale(bitmap, MAX_SCREENSHOT_EDGE)
         val root = try {
             getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
@@ -117,7 +119,7 @@ class RcAccessibilityService : AccessibilityService() {
         val stats = TreeStats()
         val raw = mutableListOf<RawElement>()
         collect(root, raw, stats, 0)
-        val elements = number(scaled.width, scaled.height, raw)
+        val elements = number(originalWidth, originalHeight, raw)
         val (path, bytes) = saveWebp(scaled)
 
         Snapshot(
@@ -676,9 +678,17 @@ class RcAccessibilityService : AccessibilityService() {
             ) {
                 val ownText = node.text?.toString()?.takeIf { it.isNotBlank() }
                 val ownDesc = node.contentDescription?.toString()?.takeIf { it.isNotBlank() }
-                val label = ownText ?: if (ownDesc == null) descendantLabel(node) else null
+                val descendant = if (ownText == null && ownDesc == null) {
+                    descendantLabelInfo(node)
+                } else {
+                    null
+                }
+                val label = ownText ?: descendant?.first
+                val displayBounds = descendant?.second
+                    ?.takeIf { !it.isEmpty && it.width() >= minPx && it.height() >= minPx }
+                    ?: Rect(bounds)
                 out += RawElement(
-                    bounds = Rect(bounds),
+                    bounds = displayBounds,
                     text = label,
                     desc = ownDesc,
                     viewId = node.viewIdResourceName,
@@ -712,7 +722,10 @@ class RcAccessibilityService : AccessibilityService() {
         else -> null
     }
 
-    private fun descendantLabel(node: AccessibilityNodeInfo, depth: Int = 0): String? {
+    private fun descendantLabelInfo(
+        node: AccessibilityNodeInfo,
+        depth: Int = 0
+    ): Pair<String, Rect>? {
         if (depth > 8) return null
         for (i in 0 until node.childCount) {
             val child = try {
@@ -722,8 +735,16 @@ class RcAccessibilityService : AccessibilityService() {
             } ?: continue
             val text = child.text?.toString()?.takeIf { it.isNotBlank() }
                 ?: child.contentDescription?.toString()?.takeIf { it.isNotBlank() }
-            if (text != null) return text
-            descendantLabel(child, depth + 1)?.let { return it }
+            if (text != null) {
+                val bounds = Rect()
+                try {
+                    child.getBoundsInScreen(bounds)
+                } catch (_: Throwable) {
+                    // Ignore stale child bounds and keep looking.
+                }
+                if (!bounds.isEmpty) return text to bounds
+            }
+            descendantLabelInfo(child, depth + 1)?.let { return it }
         }
         return null
     }
