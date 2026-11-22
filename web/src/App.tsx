@@ -29,6 +29,40 @@ const DEFAULT_MACRO = `{
 }`
 
 type Tab = 'control' | 'phone' | 'macros' | 'recorder' | 'runs' | 'secrets'
+type IconName =
+  | 'control'
+  | 'phone'
+  | 'macros'
+  | 'recorder'
+  | 'runs'
+  | 'secrets'
+  | 'camera'
+  | 'activity'
+  | 'close'
+  | 'check'
+  | 'bell'
+  | 'screen'
+  | 'battery'
+  | 'app'
+  | 'alert'
+
+const TABS: Array<{ key: Tab; label: string; icon: IconName }> = [
+  { key: 'control', label: 'Control', icon: 'control' },
+  { key: 'phone', label: 'Phone', icon: 'phone' },
+  { key: 'macros', label: 'Macros', icon: 'macros' },
+  { key: 'recorder', label: 'Recorder', icon: 'recorder' },
+  { key: 'runs', label: 'Runs', icon: 'runs' },
+  { key: 'secrets', label: 'Secrets', icon: 'secrets' }
+]
+
+const TAB_LABELS: Record<Tab, string> = {
+  control: 'Control',
+  phone: 'Phone',
+  macros: 'Macros',
+  recorder: 'Recorder',
+  runs: 'Runs',
+  secrets: 'Secrets'
+}
 
 interface ActiveSession {
   id: string
@@ -125,7 +159,6 @@ export default function App() {
   const [showLog, setShowLog] = useState(false)
   const [appQuery, setAppQuery] = useState('')
   const [macroEditorOpen, setMacroEditorOpen] = useState(false)
-  const [clock, setClock] = useState(() => new Date())
   const [smsMessages, setSmsMessages] = useState<SmsRecord[]>([])
   const [smsLoading, setSmsLoading] = useState(false)
   const [smsPending, setSmsPending] = useState(false)
@@ -149,9 +182,13 @@ export default function App() {
   }, [selectedId])
 
   useEffect(() => {
-    const timer = window.setInterval(() => setClock(new Date()), 1000)
-    return () => window.clearInterval(timer)
-  }, [])
+    if (!showLog) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowLog(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showLog])
 
   useEffect(() => {
     activeSessionRef.current = activeSession
@@ -715,196 +752,194 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="masthead">
-        <div className="wordmark">
-          <span className="wordmark-mark">RC</span>
-          <span className="wordmark-copy">
-            <strong>Remote Control</strong>
-            <small>Field console · internal</small>
-          </span>
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-logo">RC</div>
+          <div className="brand-copy">
+            <strong>RC Agent</strong>
+            <span>Remote control</span>
+          </div>
         </div>
-        <div className="masthead-right">
-          <span className="masthead-note">Tokenless relay · keep on LAN</span>
-          <span className="masthead-clock">
-            {clock.toLocaleTimeString([], { hour12: false })}
-          </span>
-          <span className={`link-state ${connected ? 'is-on' : ''}`}>
-            <span className="signal" />
-            {connected ? 'Relay linked' : 'Relinking'}
-          </span>
-        </div>
-      </header>
 
-      <div className="shell">
-        <aside className="rail">
-          <div className="rail-section">
-            <div className="rail-heading">
-              <span>Devices</span>
-              <span className="count">{String(devices.length).padStart(2, '0')}</span>
-            </div>
-            <div className="device-list">
-              {devices.length === 0 && (
-                <div className="rail-empty">
-                  <strong>No agent connected.</strong>
-                  <span>Start the Android app and connect it to this relay.</span>
-                </div>
+        <nav className="nav" aria-label="Sections">
+          {TABS.map((item) => (
+            <button
+              key={item.key}
+              className={`nav-item ${tab === item.key ? 'active' : ''}`}
+              onClick={() => setTab(item.key)}
+            >
+              <Icon name={item.icon} />
+              <span className="nav-label">{item.label}</span>
+              {tabNotes[item.key] != null && Number(tabNotes[item.key]) > 0 && (
+                <span className="nav-badge">{tabNotes[item.key]}</span>
               )}
-              {devices.map((device, index) => (
-                <button
-                  key={device.id}
-                  className={`device-item ${device.id === selectedId ? 'active' : ''}`}
-                  title={device.name}
-                  onClick={() => setSelectedId(device.id)}
-                >
-                  <span className="device-index">
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
-                  <span className="device-copy">
-                    <strong>{device.name}</strong>
-                    <span>{device.model ?? device.id}</span>
-                  </span>
-                  <span className="device-status">
-                    <span className={`status-dot ${device.online ? 'online' : ''}`} />
-                    <span>{device.apps?.length ?? 0}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+              {((item.key === 'recorder' && recording) ||
+                (item.key === 'runs' && activeRun)) && (
+                <span className="nav-live" />
+              )}
+            </button>
+          ))}
+        </nav>
 
-          <div className="rail-footer">
-            <div className={`relay-line ${connected ? 'online' : ''}`}>
-              <span className={`status-dot ${connected ? 'online' : ''}`} />
-              {connected ? 'Relay linked' : 'Reconnecting…'}
-            </div>
-            <div className="relay-url">{WS_URL.replace(/^wss?:\/\//, '')}</div>
-            <div className="rail-legal">Tokenless · LAN / tailnet only</div>
+        <div className="sidebar-devices">
+          <div className="sidebar-heading">
+            <span>Devices</span>
+            <span className="sidebar-count">{devices.length}</span>
           </div>
-        </aside>
-
-        <main className="workspace">
-          {prompt && (
-            <div className="prompt-strip">
-              <span className="prompt-mark">!</span>
-              <div className="prompt-copy">
-                <strong>Verification required</strong>
-                <span>
-                  {prompt.message} · run {prompt.runId.slice(0, 8)}
-                </span>
+          <div className="device-list">
+            {devices.length === 0 && (
+              <div className="sidebar-empty">
+                No devices connected yet. Start the Android agent to begin.
               </div>
-              <input
-                value={promptValue}
-                onChange={(event) => setPromptValue(event.target.value)}
-                placeholder="Enter OTP"
-                autoFocus
-              />
-              <button className="btn btn-light" onClick={submitPrompt}>
-                Send code
+            )}
+            {devices.map((device) => (
+              <button
+                key={device.id}
+                className={`device-card ${device.id === selectedId ? 'active' : ''}`}
+                title={device.name}
+                onClick={() => setSelectedId(device.id)}
+              >
+                <span className="device-card-head">
+                  <span
+                    className={`status-dot ${device.online ? 'online' : ''}`}
+                  />
+                  <strong>{device.name}</strong>
+                </span>
+                <span className="device-card-meta">
+                  {device.model ?? device.id}
+                </span>
+                <span className="device-card-foot">
+                  {device.online ? 'Online' : 'Offline'} ·{' '}
+                  {device.apps?.length ?? 0} apps
+                </span>
               </button>
-              <button className="btn btn-quiet" onClick={() => setPrompt(null)}>
-                Dismiss
-              </button>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
 
-          {!selected ? (
-            <div className="empty-workspace">
-              <span className="empty-index">00 / no device</span>
-              <h2>Nothing on the desk yet.</h2>
-              <p>
-                Connect the Android agent to the relay, then choose a device
-                from the left rail.
-              </p>
+        <div className="sidebar-footer">
+          <div className={`relay-status ${connected ? 'online' : ''}`}>
+            <span className={`status-dot ${connected ? 'online' : ''}`} />
+            {connected ? 'Relay connected' : 'Reconnecting…'}
+          </div>
+          <span className="relay-url">
+            {WS_URL.replace(/^wss?:\/\//, '')}
+          </span>
+          <span className="relay-note">LAN only · no token</span>
+        </div>
+      </aside>
+
+      <main className="main">
+        {prompt && (
+          <div className="alert alert-warning prompt-banner">
+            <Icon name="alert" />
+            <div className="alert-copy">
+              <strong>Verification required</strong>
+              <span>
+                {prompt.message} · run {prompt.runId.slice(0, 8)}
+              </span>
             </div>
-          ) : (
-            <>
-              <header className="device-header">
-                <div className="device-heading">
-                  <div className="eyebrow">
+            <input
+              className="input"
+              value={promptValue}
+              onChange={(event) => setPromptValue(event.target.value)}
+              placeholder="Enter OTP"
+              autoFocus
+            />
+            <button className="btn btn-primary" onClick={submitPrompt}>
+              Send code
+            </button>
+            <button className="btn btn-ghost" onClick={() => setPrompt(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {!selected ? (
+          <div className="empty-state">
+            <div className="empty-icon">
+              <Icon name="control" size={28} />
+            </div>
+            <h1>No device selected</h1>
+            <p>
+              Connect the Android agent to the relay, then choose it from the
+              sidebar.
+            </p>
+          </div>
+        ) : (
+          <>
+            <header className="topbar">
+              <div className="page-title">
+                <div className="breadcrumb">
+                  <span>Devices</span> / {selected.name}
+                </div>
+                <div className="title-row">
+                  <h1>{TAB_LABELS[tab]}</h1>
+                  <span
+                    className={`status-pill ${
+                      selected.online ? 'online' : 'offline'
+                    }`}
+                  >
                     <span
-                      className={`status-dot ${selected.online ? 'online' : ''}`}
+                      className={`status-dot ${
+                        selected.online ? 'online' : ''
+                      }`}
                     />
                     {selected.online ? 'Online' : 'Offline'}
-                    <span className="eyebrow-rule" />
-                    Device / {selected.id.slice(-10)}
-                  </div>
-                  <h1>{selected.name}</h1>
-                  <div className="device-meta">
-                    <span>{selected.model ?? 'Unknown model'}</span>
-                    <span>Android {selected.android ?? '?'}</span>
-                    <span className="mono">{selected.id}</span>
-                  </div>
+                  </span>
                 </div>
-                <div className="header-actions">
-                  <button
-                    className="btn btn-ink"
-                    disabled={actionDisabled}
-                    onClick={() => sendCmd(selected.id, 'snapshot')}
-                  >
-                    Capture screen
-                  </button>
-                  {recording && (
-                    <button className="btn btn-alert" onClick={stopRecording}>
-                      Stop recording
-                    </button>
-                  )}
-                  <button
-                    className={`btn btn-ghost ${showLog ? 'is-active' : ''}`}
-                    onClick={() => setShowLog((value) => !value)}
-                  >
-                    Activity
-                    <span className="btn-count">{log.length}</span>
-                  </button>
-                </div>
-              </header>
-
-              <div className="telemetry">
-                <StateChips state={selected.state} />
+                <p className="page-subtitle">
+                  {selected.name} · Android {selected.android ?? '?'} ·{' '}
+                  <span className="mono">{selected.id}</span>
+                </p>
               </div>
-
-              <nav className="tabs">
-                {(
-                  [
-                    ['control', 'Control'],
-                    ['phone', 'Phone'],
-                    ['macros', 'Macros'],
-                    ['recorder', 'Recorder'],
-                    ['runs', 'Runs'],
-                    ['secrets', 'Secrets']
-                  ] as Array<[Tab, string]>
-                ).map(([key, label], index) => (
-                  <button
-                    key={key}
-                    className={`tab ${tab === key ? 'active' : ''}`}
-                    onClick={() => setTab(key)}
-                  >
-                    <span className="tab-index">
-                      {String(index + 1).padStart(2, '0')}
-                    </span>
-                    <span>{label}</span>
-                    {tabNotes[key] !== null && (
-                      <span className="tab-note">{tabNotes[key]}</span>
-                    )}
-                    {key === 'recorder' && recording && (
-                      <span className="rec-dot" />
-                    )}
-                    {key === 'runs' && activeRun && <span className="rec-dot" />}
+              <div className="topbar-actions">
+                <button
+                  className={`btn btn-secondary ${
+                    showLog ? 'is-active' : ''
+                  }`}
+                  onClick={() => setShowLog((value) => !value)}
+                >
+                  <Icon name="activity" />
+                  Activity
+                  {log.length > 0 && (
+                    <span className="btn-badge">{log.length}</span>
+                  )}
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={actionDisabled}
+                  onClick={() => sendCmd(selected.id, 'snapshot')}
+                >
+                  <Icon name="camera" />
+                  Capture screen
+                </button>
+                {recording && (
+                  <button className="btn btn-danger" onClick={stopRecording}>
+                    <span className="status-dot" />
+                    Stop recording
                   </button>
-                ))}
-              </nav>
+                )}
+              </div>
+            </header>
 
-              <div className="workspace-body">
+            <div className="content">
+              {(tab === 'control' || tab === 'phone') && (
+                <DeviceStats state={selected.state} />
+              )}
+
+              <div className="tab-content">
                 {tab === 'control' && (
                   <div className="control-grid">
                     <div className="control-main">
-                      <div className="composer-strip">
-                        <div className="composer-label">
-                          <span className="micro">Input</span>
-                          <strong>Type into device</strong>
-                          <span>Focused field · no keyboard taps</span>
+                      <section className="panel composer-card">
+                        <div className="composer-copy">
+                          <h2>Type into device</h2>
+                          <p>Writes to the focused text field.</p>
                         </div>
                         <div className="composer-field">
                           <input
+                            className="input"
                             value={typing}
                             onChange={(event) => setTyping(event.target.value)}
                             onKeyDown={(event) => {
@@ -916,21 +951,21 @@ export default function App() {
                             placeholder="Message or value…"
                           />
                           <button
-                            className="btn btn-outline"
+                            className="btn btn-secondary"
                             disabled={busy || !typing.trim()}
                             onClick={() => sendTyping(false)}
                           >
                             Insert
                           </button>
                           <button
-                            className="btn btn-ink"
+                            className="btn btn-primary"
                             disabled={busy || !typing.trim()}
                             onClick={() => sendTyping(true)}
                           >
                             Insert + Enter
                           </button>
                         </div>
-                      </div>
+                      </section>
 
                       <SnapshotCard
                         snapshot={snapshot}
@@ -950,16 +985,16 @@ export default function App() {
                       <section className="panel apps-panel">
                         <div className="panel-head apps-head">
                           <div>
-                            <h2>App inventory</h2>
+                            <h2>Apps</h2>
                             <span className="panel-sub">
                               {apps.length} installed
                             </span>
                           </div>
                           <input
-                            className="search-input"
+                            className="input search-input"
                             value={appQuery}
                             onChange={(event) => setAppQuery(event.target.value)}
-                            placeholder="Filter"
+                            placeholder="Search apps"
                           />
                         </div>
                         <div className="app-list">
@@ -979,8 +1014,8 @@ export default function App() {
                           )}
                         </div>
                         <div className="panel-foot">
-                          <span className="status-dot online" /> Record captures
-                          a macro for that app.
+                          <span className="status-dot online" />
+                          Record captures a macro for that app.
                         </div>
                       </section>
                     </aside>
@@ -1018,7 +1053,7 @@ export default function App() {
                           Refresh
                         </button>
                         <button
-                          className="btn btn-ink"
+                          className="btn btn-primary"
                           onClick={() => {
                             setMacroDraft(DEFAULT_MACRO)
                             setMacroError(null)
@@ -1059,7 +1094,7 @@ export default function App() {
                                 Close
                               </button>
                               <button
-                                className="btn btn-ink btn-small"
+                                className="btn btn-primary btn-small"
                                 onClick={saveMacro}
                               >
                                 Save macro
@@ -1067,7 +1102,7 @@ export default function App() {
                             </div>
                           </div>
                           {macroError && (
-                            <p className="error small">{macroError}</p>
+                            <p className="error">{macroError}</p>
                           )}
                           <textarea
                             value={macroDraft}
@@ -1079,8 +1114,8 @@ export default function App() {
                         </div>
                       ) : (
                         <div className="editor-placeholder">
-                          <span>Select a macro to edit</span>
-                          <small>or start a new definition.</small>
+                          <h3>Select a macro to edit</h3>
+                          <p>Or create a new one to get started.</p>
                         </div>
                       )}
                     </div>
@@ -1122,100 +1157,248 @@ export default function App() {
                   />
                 )}
               </div>
+            </div>
+          </>
+        )}
 
-              {showLog && (
-                <section className="activity-drawer">
-                  <div className="drawer-head">
-                    <h2>Activity log</h2>
-                    <div className="drawer-meta">
-                      <span>{log.length} events</span>
-                      <button
-                        className="btn btn-ghost btn-small"
-                        onClick={() => setShowLog(false)}
-                      >
-                        Hide
-                      </button>
-                    </div>
+        {showLog && (
+          <>
+            <div
+              className="drawer-backdrop"
+              onClick={() => setShowLog(false)}
+            />
+            <aside
+              className="activity-drawer"
+              role="dialog"
+              aria-label="Activity log"
+            >
+              <div className="drawer-head">
+                <div>
+                  <h2>Activity</h2>
+                  <span>{log.length} events</span>
+                </div>
+                <button
+                  className="icon-button"
+                  onClick={() => setShowLog(false)}
+                  aria-label="Close activity"
+                >
+                  <Icon name="close" />
+                </button>
+              </div>
+              <div className="log">
+                {log.length === 0 && <p className="empty">No events yet.</p>}
+                {log.map((line, index) => (
+                  <div key={`${index}-${line}`} className="log-line">
+                    {line}
                   </div>
-                  <div className="log">
-                    {log.length === 0 && (
-                      <p className="empty">No events yet.</p>
-                    )}
-                    {log.map((line, index) => (
-                      <div key={`${index}-${line}`} className="log-line">
-                        {line}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </>
-          )}
-        </main>
-      </div>
+                ))}
+              </div>
+            </aside>
+          </>
+        )}
+      </main>
     </div>
   )
 }
 
-function StateChips({ state }: { state?: DeviceSummary['state'] }) {
+function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const
+  }
+
+  switch (name) {
+    case 'control':
+      return (
+        <svg {...common} aria-hidden="true">
+          <rect x="3" y="4" width="18" height="13" rx="2" />
+          <path d="M8 21h8M12 17v4" />
+        </svg>
+      )
+    case 'phone':
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M7 3h3l2 5-2 1.5a12 12 0 0 0 5 5L16.5 12l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2z" />
+        </svg>
+      )
+    case 'macros':
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M9 6h11M9 12h11M9 18h11" />
+          <circle cx="4.5" cy="6" r="1.2" />
+          <circle cx="4.5" cy="12" r="1.2" />
+          <circle cx="4.5" cy="18" r="1.2" />
+        </svg>
+      )
+    case 'recorder':
+      return (
+        <svg {...common} aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5" />
+          <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+        </svg>
+      )
+    case 'runs':
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M8 5l11 7-11 7z" />
+        </svg>
+      )
+    case 'secrets':
+      return (
+        <svg {...common} aria-hidden="true">
+          <rect x="4" y="10" width="16" height="11" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+        </svg>
+      )
+    case 'camera':
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M4 8h3l2-2h6l2 2h3v11H4z" />
+          <circle cx="12" cy="13" r="3.5" />
+        </svg>
+      )
+    case 'activity':
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M3 12h4l2-6 4 12 2-6h6" />
+        </svg>
+      )
+    case 'close':
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      )
+    case 'check':
+      return (
+        <svg {...common} aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M8 12l3 3 5-6" />
+        </svg>
+      )
+    case 'bell':
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+          <path d="M10 21h4" />
+        </svg>
+      )
+    case 'screen':
+      return (
+        <svg {...common} aria-hidden="true">
+          <rect x="3" y="5" width="18" height="12" rx="2" />
+          <path d="M8 21h8M12 17v4" />
+        </svg>
+      )
+    case 'battery':
+      return (
+        <svg {...common} aria-hidden="true">
+          <rect x="2" y="7" width="18" height="10" rx="2" />
+          <path d="M22 10v4" />
+          <rect x="5" y="10" width="8" height="4" fill="currentColor" stroke="none" />
+        </svg>
+      )
+    case 'app':
+      return (
+        <svg {...common} aria-hidden="true">
+          <rect x="4" y="4" width="6" height="6" rx="1" />
+          <rect x="14" y="4" width="6" height="6" rx="1" />
+          <rect x="4" y="14" width="6" height="6" rx="1" />
+          <rect x="14" y="14" width="6" height="6" rx="1" />
+        </svg>
+      )
+    case 'alert':
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M12 3l9 16H3z" />
+          <path d="M12 9v5M12 17h.01" />
+        </svg>
+      )
+    default:
+      return null
+  }
+}
+
+function DeviceStats({ state }: { state?: DeviceSummary['state'] }) {
   if (!state) {
-    return <span className="telemetry-empty">Awaiting device state…</span>
+    return (
+      <div className="stats-grid">
+        <div className="stat-card neutral">
+          <span className="stat-icon">
+            <Icon name="activity" />
+          </span>
+          <span className="stat-copy">
+            <span className="stat-label">Device state</span>
+            <strong>Waiting for the agent…</strong>
+          </span>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="telemetry-items">
-      <Metric
+    <div className="stats-grid">
+      <StatCard
+        icon="check"
         label="Accessibility"
-        value={state.a11y ? 'On' : 'Off'}
-        ok={state.a11y}
+        value={state.a11y ? 'Enabled' : 'Off'}
+        tone={state.a11y ? 'success' : 'danger'}
       />
-      <Metric
+      <StatCard
+        icon="bell"
         label="Notifications"
-        value={state.notifAccess ? 'On' : 'Off'}
-        ok={state.notifAccess}
+        value={state.notifAccess ? 'Enabled' : 'Off'}
+        tone={state.notifAccess ? 'success' : 'danger'}
       />
-      <Metric label="Screen" value={state.screenOn ? 'On' : 'Off'} ok={state.screenOn} />
-      <Metric label="Lock" value={state.locked ? 'Locked' : 'Open'} ok={!state.locked} />
-      <Metric
-        label="Owner"
-        value={state.deviceOwner ? 'Set' : 'None'}
-        ok={state.deviceOwner}
+      <StatCard
+        icon="screen"
+        label="Screen"
+        value={state.screenOn ? (state.locked ? 'Locked' : 'On') : 'Off'}
+        tone={state.screenOn && !state.locked ? 'success' : 'warning'}
       />
-      <Metric
-        label="Stay awake"
-        value={state.stayAwake ? 'Held' : 'Off'}
-        ok={state.stayAwake}
-      />
-      <Metric
+      <StatCard
+        icon="battery"
         label="Battery"
         value={`${state.battery}%${state.charging ? ' · chg' : ''}`}
-        ok={state.charging || state.battery > 20}
+        tone={state.charging || state.battery > 20 ? 'success' : 'danger'}
       />
-      {state.package && (
-        <Metric label="Foreground" value={state.package} ok wide />
-      )}
+      <StatCard
+        icon="app"
+        label="Foreground app"
+        value={state.package ?? 'Unknown'}
+        tone="neutral"
+      />
     </div>
   )
 }
 
-function Metric({
+function StatCard({
+  icon,
   label,
   value,
-  ok,
-  wide
+  tone
 }: {
+  icon: IconName
   label: string
   value: string
-  ok: boolean
-  wide?: boolean
+  tone: 'success' | 'danger' | 'warning' | 'neutral'
 }) {
   return (
-    <span className={`telemetry-item ${ok ? 'ok' : 'bad'} ${wide ? 'wide' : ''}`}>
-      <span className="telemetry-label">{label}</span>
-      <span className="telemetry-value" title={value}>
-        {value}
+    <div className={`stat-card ${tone}`}>
+      <span className="stat-icon">
+        <Icon name={icon} />
       </span>
-    </span>
+      <span className="stat-copy">
+        <span className="stat-label">{label}</span>
+        <strong title={value}>{value}</strong>
+      </span>
+    </div>
   )
 }
 
@@ -1239,22 +1422,22 @@ function AppRow({
       </div>
       <div className="app-actions">
         <button
-          className="app-action"
+          className="btn btn-ghost btn-small"
           title={`Open ${app.label}`}
           aria-label={`Open ${app.label}`}
           onClick={onOpen}
           disabled={disabled}
         >
-          ↗
+          Open
         </button>
         <button
-          className="app-action rec"
+          className="btn btn-small app-record"
           title={`Record a macro for ${app.label}`}
           aria-label={`Record a macro for ${app.label}`}
           onClick={onRecord}
           disabled={disabled}
         >
-          ●
+          Record
         </button>
       </div>
     </div>

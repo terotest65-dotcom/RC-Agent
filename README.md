@@ -67,9 +67,9 @@ and tap **Save & connect**. See [`server/README.md`](server/README.md) and
 
 ### Phase 2: macros, runs, recorder
 
-The web panel is a light editorial field console — paper, ink and vermilion
-with a serif display face, numbered tabs, a telemetry strip, and a bottom
-activity drawer:
+The web panel is a clean light dashboard — a sidebar with section navigation
+and device cards, a sticky topbar, readable status cards, large buttons, and a
+right-side activity drawer:
 
 - **Control** — apps, snapshot with hotspots, tap/type/scroll, back/home/
   recents, and a composer that types into the focused field on the device

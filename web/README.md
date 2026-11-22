@@ -29,14 +29,14 @@ tailnet.
 
 ## Layout
 
-Field console: a warm paper, ink and vermilion interface with a device rail
-on the left and an editorial workspace on the right. The header carries the
-device name in a serif display face, a telemetry strip replaces status pills,
-and tabs are numbered **Control**, **Phone**, **Macros**, **Recorder**, **Runs**,
-and **Secrets**. The event log opens as a bottom **Activity** drawer. Layout
-collapses to a single column on narrow screens; device cards scroll
-horizontally and tabs/telemetry fade at the edge. Fonts are self-hosted
-(Instrument Sans, Instrument Serif, IBM Plex Mono).
+Clean light dashboard: a white sidebar with section navigation and device
+cards, a sticky topbar with the page title and actions, a status-card row, and
+white bordered cards on a soft gray background. Sections are **Control**,
+**Phone**, **Macros**, **Recorder**, **Runs**, and **Secrets**. The event log
+opens as a right-side **Activity** drawer. Layout adapts on narrow screens:
+the sidebar becomes a two-row navigation with horizontally scrolling device
+cards, and actions/buttons stretch for touch. Fonts are self-hosted Figtree
+and IBM Plex Mono.
 
 ## Control surface
 
