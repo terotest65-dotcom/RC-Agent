@@ -1123,6 +1123,7 @@ function RecorderPanel({
   onClear: () => void
   onDraft: () => void
 }) {
+  const [textOnly, setTextOnly] = useState(false)
   const lastText = events.find(
     (event) => event.type === 'text' && !event.redacted && (event.text?.length ?? 0) > 0
   )
@@ -1131,6 +1132,10 @@ function RecorderPanel({
     (event.app?.includes('settings')
       ? 'Settings'
       : appLabel(event.app))
+
+  const visibleEvents = textOnly
+    ? events.filter((event) => event.type === 'text')
+    : events
 
   return (
     <section className="panel">
@@ -1148,6 +1153,12 @@ function RecorderPanel({
           )}
           <button className="btn" onClick={onClear}>
             Clear
+          </button>
+          <button
+            className={`btn ${textOnly ? 'active' : ''}`}
+            onClick={() => setTextOnly((value) => !value)}
+          >
+            {textOnly ? 'Text only' : 'All events'}
           </button>
           <button className="btn" onClick={onDraft} disabled={events.length === 0}>
             Draft macro
@@ -1170,7 +1181,7 @@ function RecorderPanel({
       </div>
 
       <div className="record-events">
-        {events.map((event, index) => (
+        {visibleEvents.map((event, index) => (
           <div className={`record-event ${event.type}`} key={`${event.ts}-${index}`}>
             <span className="record-time">{new Date(event.ts).toLocaleTimeString()}</span>
             <span className="record-app">{labelFor(event)}</span>
@@ -1186,16 +1197,19 @@ function RecorderPanel({
             </span>
           </div>
         ))}
-        {events.length === 0 && (
+        {visibleEvents.length === 0 && (
           <p className="empty">
-            Text, taps, scrolls, and window changes will appear here while recording.
+            {textOnly
+              ? 'No text events yet. Type in the target app while recording.'
+              : 'Text, taps, scrolls, and window changes will appear here while recording.'}
           </p>
         )}
       </div>
 
       <p className="muted small">
-        Text comes from accessibility text-change events, not raw hardware keycodes.
-        Password fields are redacted. App labels come from the device inventory.
+        {textOnly
+          ? 'Showing text events only. Toggle off to see taps, scrolls, and window changes.'
+          : 'Text comes from accessibility text-change events, not raw hardware keycodes. Password fields are redacted. App labels come from the device inventory.'}
       </p>
     </section>
   )
