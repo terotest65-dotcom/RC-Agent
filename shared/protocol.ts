@@ -340,6 +340,7 @@ export type ActionName =
   | 'tap'
   | 'tapXY'
   | 'setText'
+  | 'inputText'
   | 'scroll'
   | 'globalAction'
   | 'probe'

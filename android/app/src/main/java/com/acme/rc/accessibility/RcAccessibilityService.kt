@@ -381,6 +381,39 @@ class RcAccessibilityService : AccessibilityService() {
         }
     }
 
+    fun inputText(text: String, submit: Boolean): Boolean {
+        val root = activeRoot() ?: return false
+        val focused = try {
+            root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        } catch (_: Throwable) {
+            null
+        }
+        val target = when {
+            focused?.isEditable == true -> focused
+            focused != null -> findEditableAncestor(focused) ?: findFirstEditable(root)
+            else -> findFirstEditable(root)
+        } ?: return false
+
+        return try {
+            target.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            val arguments = Bundle().apply {
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    text
+                )
+            }
+            val set = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            if (set && submit) {
+                target.performAction(
+                    AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id
+                )
+            }
+            set
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     fun scrollSelector(selector: Selector, down: Boolean): Boolean {
         val node = findNode(selector) ?: return false
         val target = if (node.isScrollable) node else findScrollableAncestor(node)
@@ -476,6 +509,18 @@ class RcAccessibilityService : AccessibilityService() {
             } catch (_: Throwable) {
                 null
             }
+        }
+        return null
+    }
+
+    private fun findFirstEditable(
+        node: AccessibilityNodeInfo?,
+        depth: Int = 0
+    ): AccessibilityNodeInfo? {
+        if (node == null || depth > 60) return null
+        if (node.isEditable) return node
+        for (i in 0 until node.childCount) {
+            findFirstEditable(node.getChild(i), depth + 1)?.let { return it }
         }
         return null
     }

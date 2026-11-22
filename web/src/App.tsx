@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import { TARGET_APPS } from '../../shared/protocol'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ActionName,
   AppInfo,
   DeviceSummary,
   Element,
   Macro,
-  ProbeResult,
   PromptMessage,
   RecordEvent,
   RunRecord,
@@ -126,6 +123,10 @@ export default function App() {
   const [promptValue, setPromptValue] = useState('')
   const [gridMode, setGridMode] = useState(false)
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
+  const [typing, setTyping] = useState('')
+  const [showLog, setShowLog] = useState(false)
+  const [appQuery, setAppQuery] = useState('')
+  const [macroEditorOpen, setMacroEditorOpen] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const selectedRef = useRef<string | null>(null)
@@ -209,18 +210,8 @@ export default function App() {
             `snapshot ${msg.id} · ${msg.elements.length} hotspots · ${msg.elapsedMs} ms`
           )
           break
-        case 'probe': {
-          const result = msg.result
-          setDevices((prev) =>
-            prev.map((d) =>
-              d.id === msg.deviceId
-                ? { ...d, probes: { ...(d.probes ?? {}), [result.pkg]: result } }
-                : d
-            )
-          )
-          appendLog(`probe ${result.pkg}: ${result.verdict}`)
+        case 'probe':
           break
-        }
         case 'actionResult':
           setBusy(false)
           appendLog(
@@ -374,7 +365,15 @@ export default function App() {
 
   const selected = devices.find((d) => d.id === selectedId) ?? null
   const apps = selected?.apps ?? []
-  const probes = selected?.probes ?? {}
+  const filteredApps = useMemo(() => {
+    const query = appQuery.trim().toLowerCase()
+    if (!query) return apps
+    return apps.filter(
+      (app) =>
+        app.label.toLowerCase().includes(query) ||
+        app.pkg.toLowerCase().includes(query)
+    )
+  }, [apps, appQuery])
   const activeRun = selected
     ? runs.find((r) => r.deviceId === selected.id && r.status === 'running')
     : undefined
@@ -406,16 +405,6 @@ export default function App() {
       text: editing.text
     })
     setEditing(null)
-  }
-
-  const startRecording = () => {
-    if (!selected) return
-    const sessionId = crypto.randomUUID()
-    setTab('recorder')
-    setActiveSession({ id: sessionId })
-    setRecordEvents([])
-    setRecording(true)
-    sendCmd(selected.id, 'startRecording', { sessionId }, false)
   }
 
   const startAppRecording = (app: AppInfo) => {
@@ -476,6 +465,7 @@ export default function App() {
   const editMacro = (macro: Macro) => {
     setMacroDraft(JSON.stringify(macro, null, 2))
     setMacroError(null)
+    setMacroEditorOpen(true)
     setTab('macros')
   }
 
@@ -510,6 +500,12 @@ export default function App() {
   const tapXY = (x: number, y: number) => {
     if (!selected) return
     sendCmd(selected.id, 'tapXY', { x, y })
+  }
+
+  const sendTyping = (submit: boolean) => {
+    if (!selected || !typing.trim()) return
+    sendCmd(selected.id, 'inputText', { text: typing, submit })
+    setTyping('')
   }
 
   const draftMacro = () => {
@@ -589,269 +585,315 @@ export default function App() {
     appendLog(`drafted macro with ${steps.length} steps`)
   }
 
-  const targetsInstalled = apps.filter((a) => TARGET_APPS.includes(a.pkg))
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="logo">RC</span>
-          <div>
-            <h1>RC Agent</h1>
-            <p>Phase 2 · device console, macros, recorder</p>
+    <div className="shell">
+      <aside className="rail">
+        <div className="rail-brand">
+          <div className="brand-mark">RC</div>
+          <div className="brand-copy">
+            <strong>RC Agent</strong>
+            <span>Device control</span>
           </div>
         </div>
-        <div className={`conn ${connected ? 'on' : 'off'}`}>
-          <span className="dot" />
-          {connected ? 'relay connected' : 'reconnecting…'}
-        </div>
-      </header>
 
-      <div className="layout">
-        <aside className="sidebar">
-          <div className="sidebar-head">
-            <h2>Devices</h2>
-            <span className="muted">{devices.length}</span>
+        <div className="rail-section">
+          <div className="rail-heading">
+            <span>Devices</span>
+            <span className="count">{devices.length}</span>
           </div>
-          {devices.length === 0 && (
-            <p className="empty">
-              No devices yet. Connect the Android agent to this relay.
-            </p>
-          )}
-          {devices.map((device) => (
-            <button
-              key={device.id}
-              className={`device ${device.id === selectedId ? 'selected' : ''}`}
-              onClick={() => setSelectedId(device.id)}
-            >
-              <div className="device-line">
-                <span className={`dot ${device.online ? 'on' : 'off'}`} />
-                <strong>{device.name}</strong>
-              </div>
-              <div className="muted small">
-                {device.model ?? device.id} · Android {device.android ?? '?'}
-              </div>
-              <div className="muted small">
-                {device.online ? 'online' : 'offline'} · {device.apps?.length ?? 0} apps
-              </div>
+          <div className="device-list">
+            {devices.length === 0 && (
+              <div className="rail-empty">No devices connected</div>
+            )}
+            {devices.map((device) => (
+              <button
+                key={device.id}
+                className={`device-item ${device.id === selectedId ? 'active' : ''}`}
+                onClick={() => setSelectedId(device.id)}
+              >
+                <span className={`status-dot ${device.online ? 'online' : ''}`} />
+                <span className="device-avatar">
+                  {device.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="device-copy">
+                  <strong>{device.name}</strong>
+                  <span>{device.model ?? device.id}</span>
+                </span>
+                <span className="device-count">{device.apps?.length ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rail-footer">
+          <div className={`relay-state ${connected ? 'online' : ''}`}>
+            <span className={`status-dot ${connected ? 'online' : ''}`} />
+            {connected ? 'Relay connected' : 'Reconnecting…'}
+          </div>
+          <div className="relay-url">{WS_URL.replace(/^wss?:\/\//, '')}</div>
+        </div>
+      </aside>
+
+      <main className="workspace">
+        {prompt && (
+          <div className="prompt-banner">
+            <div className="prompt-copy">
+              <strong>Verification required</strong>
+              <span>
+                {prompt.message} · run {prompt.runId.slice(0, 8)}
+              </span>
+            </div>
+            <input
+              value={promptValue}
+              onChange={(event) => setPromptValue(event.target.value)}
+              placeholder="Enter OTP"
+              autoFocus
+            />
+            <button className="btn primary" onClick={submitPrompt}>
+              Send
             </button>
-          ))}
-        </aside>
+            <button className="btn ghost" onClick={() => setPrompt(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
 
-        <main className="main">
-          {prompt && (
-            <div className="prompt-banner">
-              <div className="prompt-copy">
-                <strong>OTP required</strong>
-                <div className="muted small">
-                  {prompt.message} · run {prompt.runId.slice(0, 8)}
+        {!selected ? (
+          <div className="empty-workspace">
+            <div className="empty-mark">▣</div>
+            <h2>No device selected</h2>
+            <p>Connect the Android agent to the relay, then choose a device.</p>
+          </div>
+        ) : (
+          <>
+            <header className="workspace-header">
+              <div className="workspace-title">
+                <div className="eyebrow">
+                  <span className={`status-dot ${selected.online ? 'online' : ''}`} />
+                  {selected.online ? 'Online' : 'Offline'}
                 </div>
+                <h1>{selected.name}</h1>
+                <p>
+                  {selected.model ?? 'Unknown device'} · Android{' '}
+                  {selected.android ?? '?'} · {selected.id}
+                </p>
               </div>
-              <input
-                value={promptValue}
-                onChange={(event) => setPromptValue(event.target.value)}
-                placeholder="Enter OTP"
-                autoFocus
-              />
-              <button className="btn primary" onClick={submitPrompt}>
-                Send OTP
-              </button>
-              <button className="btn" onClick={() => setPrompt(null)}>
-                Dismiss
-              </button>
-            </div>
-          )}
-
-          {!selected && (
-            <div className="panel empty-panel">
-              <h2>Select a device</h2>
-              <p className="muted">
-                The relay is running. Start the Android agent, point it at this
-                host, and it will appear here.
-              </p>
-            </div>
-          )}
-
-          {selected && (
-            <>
-              <section className="panel">
-                <div className="panel-head">
-                  <div>
-                    <h2>{selected.name}</h2>
-                    <p className="muted small">
-                      {selected.id} · {selected.model ?? 'unknown'} · Android{' '}
-                      {selected.android ?? '?'} · agent {selected.agent ?? '?'}
-                    </p>
-                  </div>
-                  <div className={`conn ${selected.online ? 'on' : 'off'}`}>
-                    <span className="dot" />
-                    {selected.online ? 'online' : 'offline'}
-                  </div>
-                </div>
-                <StateChips state={selected.state} />
-                <div className="toolbar">
-                  <button
-                    className="btn primary"
-                    disabled={actionDisabled}
-                    onClick={() => sendCmd(selected.id, 'snapshot')}
-                  >
-                    Capture
+              <div className="header-actions">
+                <button
+                  className="btn"
+                  disabled={actionDisabled}
+                  onClick={() => sendCmd(selected.id, 'snapshot')}
+                >
+                  Capture
+                </button>
+                {recording && (
+                  <button className="btn danger" onClick={stopRecording}>
+                    Stop recording
                   </button>
-                  <button
-                    className="btn"
-                    disabled={actionDisabled || targetsInstalled.length === 0}
-                    onClick={() => sendCmd(selected.id, 'probeTargets', {}, false)}
-                  >
-                    Probe v1 apps
-                  </button>
-                  <button
-                    className={`btn ${recording ? 'recording' : ''}`}
-                    disabled={!selected.online || !!activeRun}
-                    onClick={() => {
-                      setTab('recorder')
-                      if (recording) stopRecording()
-                      else startRecording()
-                    }}
-                  >
-                    {recording ? '● Stop recording' : 'Record'}
-                  </button>
-                  <button
-                    className="btn"
-                    disabled={actionDisabled}
-                    onClick={() => sendCmd(selected.id, 'globalAction', { name: 'back' })}
-                  >
-                    Back
-                  </button>
-                  <button
-                    className="btn"
-                    disabled={actionDisabled}
-                    onClick={() => sendCmd(selected.id, 'globalAction', { name: 'home' })}
-                  >
-                    Home
-                  </button>
-                  <button
-                    className="btn"
-                    disabled={actionDisabled}
-                    onClick={() => sendCmd(selected.id, 'globalAction', { name: 'recents' })}
-                  >
-                    Recents
-                  </button>
-                  <button
-                    className="btn"
-                    disabled={actionDisabled}
-                    onClick={() => sendCmd(selected.id, 'listApps', {}, false)}
-                  >
-                    Refresh apps
-                  </button>
-                </div>
-              </section>
-
-              <div className="tabs">
-                <TabButton active={tab === 'control'} onClick={() => setTab('control')}>
-                  Control
-                </TabButton>
-                <TabButton active={tab === 'macros'} onClick={() => setTab('macros')}>
-                  Macros
-                </TabButton>
-                <TabButton active={tab === 'recorder'} onClick={() => setTab('recorder')}>
-                  Recorder {recording && <span className="rec-dot" />}
-                </TabButton>
-                <TabButton active={tab === 'runs'} onClick={() => setTab('runs')}>
-                  Runs {activeRun ? <span className="rec-dot" /> : null}
-                </TabButton>
-                <TabButton active={tab === 'secrets'} onClick={() => setTab('secrets')}>
-                  Secrets
-                </TabButton>
+                )}
+                <button
+                  className={`btn ghost ${showLog ? 'active' : ''}`}
+                  onClick={() => setShowLog((value) => !value)}
+                >
+                  Activity{log.length ? ` · ${log.length}` : ''}
+                </button>
               </div>
+            </header>
 
+            <div className="state-bar">
+              <StateChips state={selected.state} />
+            </div>
+
+            <nav className="tabs">
+              {(
+                [
+                  ['control', 'Control'],
+                  ['macros', 'Macros'],
+                  ['recorder', 'Recorder'],
+                  ['runs', 'Runs'],
+                  ['secrets', 'Secrets']
+                ] as Array<[Tab, string]>
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  className={`tab ${tab === key ? 'active' : ''}`}
+                  onClick={() => setTab(key)}
+                >
+                  {label}
+                  {key === 'recorder' && recording && <span className="rec-dot" />}
+                  {key === 'runs' && activeRun && <span className="rec-dot" />}
+                </button>
+              ))}
+            </nav>
+
+            <div className="workspace-body">
               {tab === 'control' && (
-                <>
-                  <section className="panel">
-                    <div className="panel-head">
-                      <h2>Apps</h2>
-                      <span className="muted small">{apps.length} installed</span>
-                    </div>
-                    <div className="apps">
-                      {apps.map((app) => (
-                        <AppRow
-                          key={app.pkg}
-                          app={app}
-                          probe={probes[app.pkg]}
-                          disabled={runDisabled}
-                          onOpen={() => sendCmd(selected.id, 'launch', { pkg: app.pkg })}
-                          onCapture={() => sendCmd(selected.id, 'launch', { pkg: app.pkg })}
-                          onProbe={() => sendCmd(selected.id, 'probe', { pkg: app.pkg })}
-                          onRecord={() => startAppRecording(app)}
+                <div className="control-grid">
+                  <div className="control-main">
+                    <div className="composer-card">
+                      <div className="composer-copy">
+                        <strong>Type into device</strong>
+                        <span>Uses the focused text field. No keyboard taps needed.</span>
+                      </div>
+                      <div className="composer-row">
+                        <input
+                          value={typing}
+                          onChange={(event) => setTyping(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' && !event.shiftKey) {
+                              event.preventDefault()
+                              sendTyping(true)
+                            }
+                          }}
+                          placeholder="Type a message or value…"
                         />
-                      ))}
-                      {apps.length === 0 && (
-                        <p className="empty">No app inventory yet. Use Refresh apps.</p>
-                      )}
+                        <button
+                          className="btn"
+                          disabled={busy || !typing.trim()}
+                          onClick={() => sendTyping(false)}
+                        >
+                          Insert
+                        </button>
+                        <button
+                          className="btn primary"
+                          disabled={busy || !typing.trim()}
+                          onClick={() => sendTyping(true)}
+                        >
+                          Insert + Enter
+                        </button>
+                      </div>
                     </div>
-                  </section>
 
-                  <SnapshotCard
-                    snapshot={snapshot}
-                    busy={busy}
-                    status={null}
-                    onCaptureCurrent={() => sendCmd(selected.id, 'snapshot')}
-                    editing={editing}
-                    setEditing={setEditing}
-                    onTapElement={tapElement}
-                    onScrollElement={scrollElement}
-                    onSendText={sendText}
-                    gridMode={gridMode}
-                    onToggleGrid={() => setGridMode((value) => !value)}
-                    onTapXY={tapXY}
-                  />
-                </>
+                    <SnapshotCard
+                      snapshot={snapshot}
+                      busy={busy}
+                      editing={editing}
+                      setEditing={setEditing}
+                      onTapElement={tapElement}
+                      onScrollElement={scrollElement}
+                      onSendText={sendText}
+                      gridMode={gridMode}
+                      onToggleGrid={() => setGridMode((value) => !value)}
+                      onTapXY={tapXY}
+                    />
+                  </div>
+
+                  <aside className="control-side">
+                    <section className="card apps-card">
+                      <div className="card-header">
+                        <div>
+                          <h2>Apps</h2>
+                          <span className="sub">{apps.length} installed</span>
+                        </div>
+                        <input
+                          className="search-input"
+                          value={appQuery}
+                          onChange={(event) => setAppQuery(event.target.value)}
+                          placeholder="Search"
+                        />
+                      </div>
+                      <div className="app-list">
+                        {filteredApps.map((app) => (
+                          <AppRow
+                            key={app.pkg}
+                            app={app}
+                            disabled={runDisabled}
+                            onOpen={() =>
+                              sendCmd(selected.id, 'launch', { pkg: app.pkg })
+                            }
+                            onRecord={() => startAppRecording(app)}
+                          />
+                        ))}
+                        {filteredApps.length === 0 && (
+                          <p className="empty">No matching apps.</p>
+                        )}
+                      </div>
+                      <div className="app-hint">
+                        <span className="status-dot online" /> Record captures a
+                        macro for that app.
+                      </div>
+                    </section>
+                  </aside>
+                </div>
               )}
 
               {tab === 'macros' && (
-                <section className="panel">
-                  <div className="panel-head">
-                    <h2>Macros</h2>
-                    <div className="app-actions">
+                <section className="card">
+                  <div className="card-header">
+                    <div>
+                      <h2>Macros</h2>
+                      <span className="sub">{macros.length} saved</span>
+                    </div>
+                    <div className="card-actions">
                       <button
-                        className="btn"
-                        onClick={() => {
-                          setMacroDraft(DEFAULT_MACRO)
-                          setMacroError(null)
-                        }}
-                      >
-                        New
-                      </button>
-                      <button
-                        className="btn"
+                        className="btn ghost"
                         onClick={() => sendRaw({ t: 'macroList' })}
                       >
                         Refresh
                       </button>
-                      <button className="btn primary" onClick={saveMacro}>
-                        Save macro
+                      <button
+                        className="btn primary"
+                        onClick={() => {
+                          setMacroDraft(DEFAULT_MACRO)
+                          setMacroError(null)
+                          setMacroEditorOpen(true)
+                        }}
+                      >
+                        New macro
                       </button>
                     </div>
                   </div>
-                  {macroError && <p className="error small">{macroError}</p>}
-                  <div className="macro-editor">
-                    <textarea
-                      value={macroDraft}
-                      onChange={(event) => setMacroDraft(event.target.value)}
-                      spellCheck={false}
-                    />
-                  </div>
-                  <div className="macro-list">
-                    {macros.map((macro) => (
-                      <MacroRow
-                        key={macro.id}
-                        macro={macro}
-                        disabled={runDisabled}
-                        onRun={runMacro}
-                        onEdit={editMacro}
-                        onDelete={deleteMacro}
-                      />
-                    ))}
-                    {macros.length === 0 && <p className="empty">No macros yet.</p>}
+
+                  <div className="macro-layout">
+                    <div className="macro-list">
+                      {macros.map((macro) => (
+                        <MacroRow
+                          key={macro.id}
+                          macro={macro}
+                          disabled={runDisabled}
+                          onRun={runMacro}
+                          onEdit={editMacro}
+                          onDelete={deleteMacro}
+                        />
+                      ))}
+                      {macros.length === 0 && (
+                        <p className="empty">No macros yet.</p>
+                      )}
+                    </div>
+
+                    {macroEditorOpen ? (
+                      <div className="macro-editor-panel">
+                        <div className="card-header compact">
+                          <h2>Edit JSON</h2>
+                          <div className="card-actions">
+                            <button
+                              className="btn ghost small"
+                              onClick={() => setMacroEditorOpen(false)}
+                            >
+                              Close
+                            </button>
+                            <button
+                              className="btn primary small"
+                              onClick={saveMacro}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                        {macroError && <p className="error small">{macroError}</p>}
+                        <textarea
+                          value={macroDraft}
+                          onChange={(event) => setMacroDraft(event.target.value)}
+                          spellCheck={false}
+                        />
+                      </div>
+                    ) : (
+                      <div className="editor-placeholder">
+                        <span>Select a macro to edit</span>
+                        <small>or create a new one</small>
+                      </div>
+                    )}
                   </div>
                 </section>
               )}
@@ -865,8 +907,6 @@ export default function App() {
                     activeSession?.appLabel ??
                     (activeSession ? 'ad-hoc session' : null)
                   }
-                  disabled={!selected.online || !!activeRun}
-                  onStart={startRecording}
                   onStop={stopRecording}
                   onClear={() => setRecordEvents([])}
                   onDraft={draftMacro}
@@ -892,47 +932,38 @@ export default function App() {
                   onDelete={deleteSecret}
                 />
               )}
-            </>
-          )}
+            </div>
 
-          <section className="panel log-panel">
-            <div className="panel-head">
-              <h2>Log</h2>
-              <span className="muted small">{busy ? 'busy…' : 'idle'}</span>
-            </div>
-            <div className="log">
-              {log.length === 0 && <p className="empty">No events yet.</p>}
-              {log.map((line, index) => (
-                <div key={`${index}-${line}`} className="log-line">
-                  {line}
+            {showLog && (
+              <section className="activity-drawer">
+                <div className="card-header compact">
+                  <h2>Activity</h2>
+                  <button
+                    className="btn ghost small"
+                    onClick={() => setShowLog(false)}
+                  >
+                    Hide
+                  </button>
                 </div>
-              ))}
-            </div>
-          </section>
-        </main>
-      </div>
+                <div className="log">
+                  {log.length === 0 && <p className="empty">No events yet.</p>}
+                  {log.map((line, index) => (
+                    <div key={`${index}-${line}`} className="log-line">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+      </main>
     </div>
   )
 }
 
-function TabButton({
-  active,
-  onClick,
-  children
-}: {
-  active: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button className={`tab ${active ? 'active' : ''}`} onClick={onClick}>
-      {children}
-    </button>
-  )
-}
-
 function StateChips({ state }: { state?: DeviceSummary['state'] }) {
-  if (!state) return <p className="muted small">No device state yet.</p>
+  if (!state) return <span className="muted small">No device state yet.</span>
   return (
     <div className="chips">
       <Chip label="Accessibility" ok={state.a11y} />
@@ -941,7 +972,10 @@ function StateChips({ state }: { state?: DeviceSummary['state'] }) {
       <Chip label="Unlocked" ok={!state.locked} />
       <Chip label="Device Owner" ok={state.deviceOwner} />
       <Chip label="Stay awake" ok={state.stayAwake} />
-      <Chip label={`Battery ${state.battery}%`} ok={state.charging || state.battery > 20} />
+      <Chip
+        label={`Battery ${state.battery}%`}
+        ok={state.charging || state.battery > 20}
+      />
       {state.package && <Chip label={state.package} ok />}
     </div>
   )
@@ -953,55 +987,42 @@ function Chip({ label, ok }: { label: string; ok: boolean }) {
 
 function AppRow({
   app,
-  probe,
   disabled,
   onOpen,
-  onCapture,
-  onProbe,
   onRecord
 }: {
   app: AppInfo
-  probe?: ProbeResult
   disabled: boolean
   onOpen: () => void
-  onCapture: () => void
-  onProbe: () => void
   onRecord: () => void
 }) {
-  const target = TARGET_APPS.includes(app.pkg)
   return (
     <div className="app-row">
       <div className="app-icon">{app.label.slice(0, 1).toUpperCase()}</div>
-      <div className="app-main">
-        <div className="app-title">
-          {app.label}
-          {target && <span className="tag">v1</span>}
-          {probe && <VerdictBadge verdict={probe.verdict} />}
-        </div>
-        <div className="muted small">
-          {app.pkg} · {app.version}
-        </div>
+      <div className="app-copy">
+        <strong>{app.label}</strong>
+        <span>{app.pkg}</span>
       </div>
       <div className="app-actions">
-        <button className="btn small" onClick={onOpen} disabled={disabled}>
-          Open
+        <button
+          className="icon-btn"
+          title="Open app"
+          onClick={onOpen}
+          disabled={disabled}
+        >
+          ↗
         </button>
-        <button className="btn small" onClick={onCapture} disabled={disabled}>
-          Capture
-        </button>
-        <button className="btn small" onClick={onProbe} disabled={disabled}>
-          Probe
-        </button>
-        <button className="btn small" onClick={onRecord} disabled={disabled}>
-          Record
+        <button
+          className="icon-btn accent"
+          title="Record a macro for this app"
+          onClick={onRecord}
+          disabled={disabled}
+        >
+          ●
         </button>
       </div>
     </div>
   )
-}
-
-function VerdictBadge({ verdict }: { verdict: ProbeResult['verdict'] }) {
-  return <span className={`verdict ${verdict}`}>{verdict}</span>
 }
 
 function elementLabel(element: Element) {
@@ -1016,8 +1037,6 @@ function elementLabel(element: Element) {
 function SnapshotCard({
   snapshot,
   busy,
-  status,
-  onCaptureCurrent,
   editing,
   setEditing,
   onTapElement,
@@ -1029,8 +1048,6 @@ function SnapshotCard({
 }: {
   snapshot: SnapshotMessage | null
   busy: boolean
-  status: string | null
-  onCaptureCurrent: () => void
   editing: { element: Element; text: string } | null
   setEditing: (value: { element: Element; text: string } | null) => void
   onTapElement: (element: Element) => void
@@ -1041,26 +1058,29 @@ function SnapshotCard({
   onTapXY: (x: number, y: number) => void
 }) {
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>Snapshot</h2>
-        <div className="app-actions">
-          <button className="btn small" onClick={onToggleGrid}>
-            {gridMode ? 'Hotspots' : 'Grid'}
-          </button>
-          {snapshot && (
-            <span className="muted small">
-              {snapshot.pkg ?? '?'} · {snapshot.w}×{snapshot.h} ·{' '}
-              {snapshot.elements.length} hotspots · {snapshot.nodeCount} nodes ·{' '}
-              {snapshot.elapsedMs} ms
-            </span>
-          )}
+    <section className="card snapshot-card">
+      <div className="card-header">
+        <div>
+          <h2>Device screen</h2>
+          <span className="sub">
+            {snapshot
+              ? `${snapshot.pkg ?? 'unknown'} · ${snapshot.w}×${snapshot.h} · ${snapshot.elements.length} hotspots`
+              : 'No capture yet'}
+          </span>
         </div>
+        <button className="btn ghost small" onClick={onToggleGrid}>
+          {gridMode ? 'Hotspots' : 'Grid'}
+        </button>
       </div>
 
-      {!snapshot && <p className="empty">Capture a screen to see hotspots.</p>}
-      {status && <p className="muted small">{status}</p>}
-      {snapshot?.error && <p className="error">Capture error: {snapshot.error}</p>}
+      {snapshot?.error && <p className="error">{snapshot.error}</p>}
+
+      {!snapshot && (
+        <div className="viewport-empty">
+          <span>No screen captured</span>
+          <small>Use Capture to fetch the device screen.</small>
+        </div>
+      )}
 
       {snapshot && !snapshot.error && (
         <>
@@ -1095,12 +1115,11 @@ function SnapshotCard({
             )}
           </div>
 
-          {gridMode && (
-            <p className="muted small">
-              Grid mode: tap a numbered cell to send a coordinate tap. Useful for
-              apps with a partial accessibility tree.
-            </p>
-          )}
+          <p className="hint">
+            {gridMode
+              ? 'Grid mode: tap a cell to send a coordinate tap.'
+              : 'Tap a numbered hotspot to tap that element. The keyboard is visible in the image; use the composer above to type.'}
+          </p>
 
           {editing && (
             <div className="edit-row">
@@ -1116,7 +1135,7 @@ function SnapshotCard({
               <button className="btn primary" onClick={onSendText} disabled={busy}>
                 Set text
               </button>
-              <button className="btn" onClick={() => setEditing(null)}>
+              <button className="btn ghost" onClick={() => setEditing(null)}>
                 Cancel
               </button>
             </div>
@@ -1143,7 +1162,7 @@ function SnapshotCard({
                 </button>
                 {element.editable && (
                   <button
-                    className="btn small"
+                    className="btn small ghost"
                     onClick={() => setEditing({ element, text: '' })}
                     disabled={busy}
                   >
@@ -1153,14 +1172,14 @@ function SnapshotCard({
                 {element.scrollable && (
                   <>
                     <button
-                      className="btn small"
+                      className="btn small ghost"
                       onClick={() => onScrollElement(element, 'up')}
                       disabled={busy}
                     >
                       ↑
                     </button>
                     <button
-                      className="btn small"
+                      className="btn small ghost"
                       onClick={() => onScrollElement(element, 'down')}
                       disabled={busy}
                     >
@@ -1171,10 +1190,6 @@ function SnapshotCard({
               </div>
             ))}
           </div>
-
-          <button className="btn" onClick={onCaptureCurrent} disabled={busy}>
-            Capture current
-          </button>
         </>
       )}
     </section>
@@ -1238,10 +1253,10 @@ function MacroRow({
         >
           Run
         </button>
-        <button className="btn small" onClick={() => onEdit(macro)}>
+        <button className="btn ghost small" onClick={() => onEdit(macro)}>
           Edit
         </button>
-        <button className="btn small" onClick={() => onDelete(macro)}>
+        <button className="btn ghost small" onClick={() => onDelete(macro)}>
           Delete
         </button>
       </div>
@@ -1254,8 +1269,6 @@ function RecorderPanel({
   events,
   appLabel,
   sessionLabel,
-  disabled,
-  onStart,
   onStop,
   onClear,
   onDraft
@@ -1264,22 +1277,18 @@ function RecorderPanel({
   events: RecordEvent[]
   appLabel: (pkg?: string | null) => string
   sessionLabel: string | null
-  disabled: boolean
-  onStart: () => void
   onStop: () => void
   onClear: () => void
   onDraft: () => void
 }) {
   const [textOnly, setTextOnly] = useState(false)
-  const normalized = normalizeRecordEvents(events)
+  const normalized = useMemo(() => normalizeRecordEvents(events), [events])
+  const labelFor = (event: RecordEvent) =>
+    event.appLabel ?? (event.app?.includes('settings') ? 'Settings' : appLabel(event.app))
+
   const lastText = normalized.find(
     (event) => event.type === 'text' && !event.redacted && (event.text?.length ?? 0) > 0
   )
-  const labelFor = (event: RecordEvent) =>
-    event.appLabel ??
-    (event.app?.includes('settings')
-      ? 'Settings'
-      : appLabel(event.app))
 
   const visibleEvents = textOnly
     ? normalized.filter((event) => event.type === 'text')
@@ -1309,27 +1318,28 @@ function RecorderPanel({
   }
 
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>Recorder</h2>
-        <div className="app-actions">
-          {!recording ? (
-            <button className="btn primary" onClick={onStart} disabled={disabled}>
-              Start recording
-            </button>
-          ) : (
-            <button className="btn" onClick={onStop}>
+    <section className="card">
+      <div className="card-header">
+        <div>
+          <h2>Recorder</h2>
+          <span className="sub">
+            {recording ? 'Listening for the target app' : 'Idle'}
+          </span>
+        </div>
+        <div className="card-actions">
+          {recording && (
+            <button className="btn danger" onClick={onStop}>
               {sessionLabel ? 'Stop & save' : 'Stop recording'}
             </button>
           )}
-          <button className="btn" onClick={onClear}>
+          <button className="btn ghost" onClick={onClear} disabled={events.length === 0}>
             Clear
           </button>
           <button
-            className={`btn ${textOnly ? 'active' : ''}`}
+            className={`btn ghost ${textOnly ? 'active' : ''}`}
             onClick={() => setTextOnly((value) => !value)}
           >
-            {textOnly ? 'Text only' : 'All events'}
+            {textOnly ? 'All events' : 'Text only'}
           </button>
           <button className="btn" onClick={onDraft} disabled={events.length === 0}>
             Draft macro
@@ -1337,84 +1347,94 @@ function RecorderPanel({
         </div>
       </div>
 
-      {sessionLabel && (
-        <p className="muted small">
-          Recording for <strong>{sessionLabel}</strong>. Open it on the device and
-          use it normally; recording stops when you leave the app or click{' '}
-          <strong>Stop &amp; save</strong>.
-        </p>
+      {!recording && (
+        <div className="recorder-idle">
+          Click <strong>●</strong> on an app to start a passive recording. Open the
+          app yourself; recording stops when you leave it.
+        </div>
       )}
 
-      <div className="typed-card">
-        <div className="muted small">Last text entered</div>
-        {lastText ? (
-          <div className="typed-text">
-            <span className="typed-app">{labelFor(lastText)}</span>
-            <span>“{lastText.text}”</span>
-          </div>
-        ) : (
-          <div className="empty">
-            Start recording, then type in the target app on the device.
-          </div>
-        )}
-      </div>
-
-      <div className="typed-list">
-        <div className="panel-head">
-          <h3>Typed text</h3>
-          <button
-            className="btn small"
-            onClick={copyTyped}
-            disabled={typedEntries.length === 0}
-          >
-            Copy all
-          </button>
+      {sessionLabel && recording && (
+        <div className="recording-banner">
+          <span className="rec-dot" />
+          Recording <strong>{sessionLabel}</strong> — leave the app or click{' '}
+          <strong>Stop &amp; save</strong>.
         </div>
-        {typedEntries.map((entry) => (
-          <div className="typed-row" key={entry.key}>
-            <span className="typed-list-app">{entry.app}</span>
-            <code>{entry.text}</code>
-            <span className="muted small">
-              {new Date(entry.ts).toLocaleTimeString()}
-            </span>
-          </div>
-        ))}
-        {typedEntries.length === 0 && (
-          <p className="empty">No text entered yet.</p>
-        )}
-      </div>
+      )}
 
-      <div className="record-events">
-        {visibleEvents.map((event, index) => (
-          <div className={`record-event ${event.type}`} key={`${event.ts}-${index}`}>
-            <span className="record-time">{new Date(event.ts).toLocaleTimeString()}</span>
-            <span className="record-app">{labelFor(event)}</span>
-            <span className="record-type">{event.type}</span>
-            <span className="record-body">
-              {event.type === 'text' &&
-                (event.redacted
-                  ? '•••• (redacted)'
-                  : `${event.text ?? ''}${event.delta ? `  (+${event.delta})` : ''}`)}
-              {event.type === 'tap' && `tapped ${event.label ?? 'element'}`}
-              {event.type === 'scroll' && 'scrolled'}
-              {event.type === 'window' && `opened ${event.activity ?? 'window'}`}
-            </span>
+      <div className="recorder-grid">
+        <div className="recorder-side">
+          <div className="typed-card">
+            <div className="muted small">Last text entered</div>
+            {lastText ? (
+              <div className="typed-text">
+                <span className="typed-app">{labelFor(lastText)}</span>
+                <span>“{lastText.text}”</span>
+              </div>
+            ) : (
+              <div className="empty">Nothing typed yet.</div>
+            )}
           </div>
-        ))}
-        {visibleEvents.length === 0 && (
-          <p className="empty">
+
+          <div className="typed-list">
+            <div className="card-header compact">
+              <h3>Typed text</h3>
+              <button
+                className="btn ghost small"
+                onClick={copyTyped}
+                disabled={typedEntries.length === 0}
+              >
+                Copy all
+              </button>
+            </div>
+            {typedEntries.map((entry) => (
+              <div className="typed-row" key={entry.key}>
+                <span className="typed-list-app">{entry.app}</span>
+                <code>{entry.text}</code>
+                <span className="muted small">
+                  {new Date(entry.ts).toLocaleTimeString()}
+                </span>
+              </div>
+            ))}
+            {typedEntries.length === 0 && <p className="empty">No text entered yet.</p>}
+          </div>
+        </div>
+
+        <div className="recorder-main">
+          <div className="record-events">
+            {visibleEvents.map((event, index) => (
+              <div className={`record-event ${event.type}`} key={`${event.ts}-${index}`}>
+                <span className="record-time">
+                  {new Date(event.ts).toLocaleTimeString()}
+                </span>
+                <span className="record-app">{labelFor(event)}</span>
+                <span className="record-type">{event.type}</span>
+                <span className="record-body">
+                  {event.type === 'text' &&
+                    (event.redacted
+                      ? '•••• (redacted)'
+                      : `${event.text ?? ''}${event.delta ? `  (+${event.delta})` : ''}`)}
+                  {event.type === 'tap' && `tapped ${event.label ?? 'element'}`}
+                  {event.type === 'scroll' && 'scrolled'}
+                  {event.type === 'window' && `opened ${event.activity ?? 'window'}`}
+                </span>
+              </div>
+            ))}
+            {visibleEvents.length === 0 && (
+              <p className="empty">
+                {textOnly
+                  ? 'No text events yet.'
+                  : 'Events will appear here while recording.'}
+              </p>
+            )}
+          </div>
+          <p className="hint">
             {textOnly
-              ? 'No text events yet. Type in the target app while recording.'
-              : 'Text, taps, scrolls, and window changes will appear here while recording.'}
+              ? 'Showing text events only.'
+              : 'Masked bullet fields are cleaned; OS-marked password fields are redacted.'}
           </p>
-        )}
+        </div>
       </div>
-
-      <p className="muted small">
-        {textOnly
-          ? 'Showing text events only. Toggle off to see taps, scrolls, and window changes.'
-          : 'Text comes from accessibility text-change events. Masked bullet fields are cleaned and concatenated; OS-marked password fields are redacted.'}
-      </p>
     </section>
   )
 }
@@ -1431,32 +1451,45 @@ function RunsPanel({
   const selected = runs.find((run) => run.id === selectedId) ?? runs[0]
 
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>Runs</h2>
-        <span className="muted small">{runs.length}</span>
+    <section className="card">
+      <div className="card-header">
+        <div>
+          <h2>Runs</h2>
+          <span className="sub">{runs.length} recent</span>
+        </div>
       </div>
 
-      <div className="run-list">
-        {runs.map((run) => (
-          <button
-            key={run.id}
-            className={`run-row ${selected?.id === run.id ? 'selected' : ''}`}
-            onClick={() => onSelect(run.id)}
-          >
-            <RunStatusBadge status={run.status} />
-            <span className="run-name">{run.macroName}</span>
-            <span className="muted small">
-              {run.steps.length} steps · {new Date(run.startedAt).toLocaleTimeString()}
-            </span>
-          </button>
-        ))}
-        {runs.length === 0 && (
-          <p className="empty">No runs yet. Run a macro from the Macros tab.</p>
-        )}
-      </div>
+      <div className="run-layout">
+        <div className="run-list">
+          {runs.map((run) => (
+            <button
+              key={run.id}
+              className={`run-row ${selected?.id === run.id ? 'selected' : ''}`}
+              onClick={() => onSelect(run.id)}
+            >
+              <RunStatusBadge status={run.status} />
+              <span className="run-name">{run.macroName}</span>
+              <span className="muted small">
+                {run.steps.length} steps · {new Date(run.startedAt).toLocaleTimeString()}
+              </span>
+            </button>
+          ))}
+          {runs.length === 0 && (
+            <p className="empty">No runs yet. Run a macro from the Macros tab.</p>
+          )}
+        </div>
 
-      {selected && <RunReport run={selected} />}
+        <div className="run-detail">
+          {selected ? (
+            <RunReport run={selected} />
+          ) : (
+            <div className="editor-placeholder">
+              <span>Select a run</span>
+              <small>to inspect its steps</small>
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   )
 }
@@ -1476,14 +1509,16 @@ function RunReport({ run }: { run: RunRecord }) {
 
   return (
     <div className="run-report">
-      <div className="panel-head">
-        <h3>{run.macroName}</h3>
+      <div className="card-header compact">
+        <div>
+          <h3>{run.macroName}</h3>
+          <span className="sub">
+            {run.deviceId} · {(duration / 1000).toFixed(1)}s ·{' '}
+            {new Date(run.startedAt).toLocaleString()}
+          </span>
+        </div>
         <RunStatusBadge status={run.status} />
       </div>
-      <p className="muted small">
-        {run.deviceId} · {(duration / 1000).toFixed(1)}s ·{' '}
-        {new Date(run.startedAt).toLocaleString()}
-      </p>
 
       <div className="run-steps">
         {run.steps.map((step) => (
@@ -1491,7 +1526,8 @@ function RunReport({ run }: { run: RunRecord }) {
             <span className="index">#{step.i + 1}</span>
             <div className="element-main">
               <div>
-                {step.op} <span className={`step-status ${step.status}`}>{step.status}</span>
+                {step.op}{' '}
+                <span className={`step-status ${step.status}`}>{step.status}</span>
               </div>
               {step.error && <div className="error small">{step.error}</div>}
               {step.snapshot?.image && (
@@ -1534,15 +1570,16 @@ function SecretsPanel({
   onDelete: (id: string) => void
 }) {
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>Secrets</h2>
-        <span className="muted small">{secrets.length}</span>
+    <section className="card">
+      <div className="card-header">
+        <div>
+          <h2>Secrets</h2>
+          <span className="sub">{secrets.length} stored</span>
+        </div>
       </div>
-      <p className="muted small">
+      <p className="hint">
         Values are encrypted at rest and never returned to the browser. Use{' '}
-        <code>"secretRef": "name"</code> in a <code>setText</code> step; the relay
-        injects it at run time.
+        <code>"secretRef": "name"</code> in a <code>setText</code> step.
       </p>
       <div className="secret-form">
         <input
@@ -1571,7 +1608,7 @@ function SecretsPanel({
             <span className="muted small">
               {new Date(secret.createdAt).toLocaleString()}
             </span>
-            <button className="btn small" onClick={() => onDelete(secret.id)}>
+            <button className="btn ghost small" onClick={() => onDelete(secret.id)}>
               Delete
             </button>
           </div>

@@ -365,6 +365,15 @@ class AgentService : Service() {
                             delay(500)
                             captureAndSend()
                         }
+                        "inputText" -> {
+                            val text = msg.optString("text")
+                            val submit = msg.optBoolean("submit", false)
+                            if (!service().inputText(text, submit)) {
+                                error("no focused text field")
+                            }
+                            delay(500)
+                            captureAndSend()
+                        }
                         "scroll" -> {
                             val element = findElement(msg) ?: error("element not found")
                             val down = msg.optString("dir", "down") == "down"
