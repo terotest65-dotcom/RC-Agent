@@ -9,6 +9,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.hardware.display.DisplayManager
+import android.os.Bundle
 import android.os.SystemClock
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
@@ -246,6 +247,80 @@ class RcAccessibilityService : AccessibilityService() {
         } catch (_: Throwable) {
             false
         }
+    }
+
+    fun setText(element: Element, text: String): Boolean {
+        val root = try {
+            getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
+        } catch (_: Throwable) {
+            null
+        }
+        val node = findBySelector(root, element) ?: return false
+        return try {
+            node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            val arguments = Bundle().apply {
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    text
+                )
+            }
+            node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    fun scroll(element: Element, forward: Boolean): Boolean {
+        val root = try {
+            getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
+        } catch (_: Throwable) {
+            null
+        }
+        val node = findBySelector(root, element)
+        val action = if (forward) {
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        } else {
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        }
+        if (node != null) {
+            try {
+                if (node.performAction(action)) return true
+            } catch (_: Throwable) {
+                // Fall back to a swipe.
+            }
+        }
+        val centerX = element.boundsPx.centerX()
+        val startY = if (forward) element.boundsPx.bottom - 24 else element.boundsPx.top + 24
+        val endY = if (forward) element.boundsPx.top + 24 else element.boundsPx.bottom - 24
+        return swipe(centerX, startY, centerX, endY, 320)
+    }
+
+    fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long): Boolean {
+        return try {
+            val path = Path().apply {
+                moveTo(x1.toFloat(), y1.toFloat())
+                lineTo(x2.toFloat(), y2.toFloat())
+            }
+            val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
+            val gesture = GestureDescription.Builder().addStroke(stroke).build()
+            dispatchGesture(gesture, null, null)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    fun performGlobalActionByName(name: String): Boolean {
+        val action = when (name) {
+            "back" -> GLOBAL_ACTION_BACK
+            "home" -> GLOBAL_ACTION_HOME
+            "recents" -> GLOBAL_ACTION_RECENTS
+            "notifications" -> GLOBAL_ACTION_NOTIFICATIONS
+            "quick_settings" -> GLOBAL_ACTION_QUICK_SETTINGS
+            "lock" -> GLOBAL_ACTION_LOCK_SCREEN
+            "screenshot" -> GLOBAL_ACTION_TAKE_SCREENSHOT
+            else -> return false
+        }
+        return performGlobalAction(action)
     }
 
     private fun findBySelector(

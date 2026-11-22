@@ -51,3 +51,16 @@ Device Owner setup. Start with **Phase 0**: list apps, launch one, capture a
 settled screenshot, and run the **capability probe** over the six v1 apps. The
 probe tells you which apps are worth automating — don't guess from the app store
 listing.
+
+### Phase 1 relay + web console
+
+```bash
+cd web && npm install && npm run build
+cd ../server && npm install && npm start
+# open http://localhost:8787/?token=dev
+```
+
+On the device, open **RC Agent**, keep the relay URL
+(`ws://10.0.2.2:8787/ws` on an emulator, `ws://<host-ip>:8787/ws` on a phone),
+and tap **Save & connect**. See [`server/README.md`](server/README.md) and
+[`web/README.md`](web/README.md).

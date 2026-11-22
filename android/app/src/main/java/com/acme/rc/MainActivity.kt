@@ -28,9 +28,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -52,6 +54,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.acme.rc.accessibility.RcAccessibilityService
+import com.acme.rc.agent.AgentConfig
+import com.acme.rc.agent.AgentConnection
+import com.acme.rc.agent.AgentService
 import com.acme.rc.device.DeviceStateReader
 import com.acme.rc.inventory.AppInventory
 import com.acme.rc.model.AppInfo
@@ -93,6 +98,23 @@ class MainActivity : ComponentActivity() {
 
                 fun refreshDevice() {
                     device = DeviceStateReader.read(this@MainActivity)
+                }
+
+                fun connectRelay(url: String, token: String) {
+                    AgentConfig.setServerUrl(this@MainActivity, url)
+                    AgentConfig.setToken(this@MainActivity, token)
+                    ContextCompat.startForegroundService(
+                        this@MainActivity,
+                        Intent(this@MainActivity, AgentService::class.java)
+                    )
+                }
+
+                fun stopRelay() {
+                    this@MainActivity.stopService(
+                        Intent(this@MainActivity, AgentService::class.java)
+                    )
+                    AgentConnection.connected = false
+                    AgentConnection.status = "Stopped"
                 }
 
                 fun requireService(): RcAccessibilityService? {
@@ -244,6 +266,18 @@ class MainActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         item {
+                            RelayCard(
+                                connected = AgentConnection.connected,
+                                status = AgentConnection.status,
+                                deviceId = AgentConnection.deviceId,
+                                initialUrl = AgentConfig.serverUrl(this@MainActivity),
+                                initialToken = AgentConfig.token(this@MainActivity),
+                                onConnect = { url, token -> connectRelay(url, token) },
+                                onStop = { stopRelay() }
+                            )
+                        }
+
+                        item {
                             DeviceCard(
                                 state = device,
                                 onRefresh = { refreshDevice() },
@@ -305,6 +339,73 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RelayCard(
+    connected: Boolean,
+    status: String,
+    deviceId: String,
+    initialUrl: String,
+    initialToken: String,
+    onConnect: (String, String) -> Unit,
+    onStop: () -> Unit
+) {
+    var url by remember { mutableStateOf(initialUrl) }
+    var token by remember { mutableStateOf(initialToken) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Relay",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                StatusChip(if (connected) "Connected" else "Offline", connected)
+            }
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = { Text("WebSocket URL") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = token,
+                onValueChange = { token = it },
+                label = { Text("Token") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (deviceId.isNotBlank()) {
+                Text("Device ID: $deviceId", style = MaterialTheme.typography.bodySmall)
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(onClick = { onConnect(url, token) }) {
+                    Text(if (connected) "Reconnect" else "Save & connect")
+                }
+                OutlinedButton(onClick = onStop) { Text("Stop") }
+            }
+            Text(
+                "Emulator: ws://10.0.2.2:8787/ws. Phone: ws://<host-ip>:8787/ws.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
