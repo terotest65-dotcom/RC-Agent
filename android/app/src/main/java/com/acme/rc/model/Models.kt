@@ -79,6 +79,14 @@ data class DeviceState(
     val model: String
 )
 
+data class Selector(
+    val viewId: String? = null,
+    val text: String? = null,
+    val contains: String? = null,
+    val desc: String? = null,
+    val className: String? = null
+)
+
 object TargetApps {
     val packages = listOf(
         "com.whatsapp",

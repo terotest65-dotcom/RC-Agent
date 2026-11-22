@@ -1,19 +1,32 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { randomUUID } from 'node:crypto'
 import { WebSocketServer, type WebSocket as WsSocket } from 'ws'
 import type {
   AppInfo,
   DeviceState,
   DeviceSummary,
+  Macro,
   ProbeResult,
   Role,
+  RunRecord,
+  RunStep,
   ServerMessage
 } from '../../shared/protocol'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
+const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
+const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const TOKEN = process.env.RC_TOKEN ?? 'dev'
 
@@ -33,18 +46,19 @@ interface DeviceRecord {
 
 const devices = new Map<string, DeviceRecord>()
 const admins = new Set<WsSocket>()
+const macros = new Map<string, Macro>()
+const runs = new Map<string, RunRecord>()
 
 function log(...args: unknown[]) {
   console.log(new Date().toISOString(), ...args)
 }
 
 function json(res: ServerResponse, value: unknown) {
-  const body = JSON.stringify(value)
   res.writeHead(200, {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store'
   })
-  res.end(body)
+  res.end(JSON.stringify(value))
 }
 
 const MIME: Record<string, string> = {
@@ -93,6 +107,8 @@ const server = createServer((req, res) => {
       devices: devices.size,
       online: [...devices.values()].filter((d) => d.online).length,
       admins: admins.size,
+      macros: macros.size,
+      runs: runs.size,
       uptime: Math.round(process.uptime())
     })
     return
@@ -100,6 +116,16 @@ const server = createServer((req, res) => {
 
   if (url.pathname === '/api/devices') {
     json(res, [...devices.values()].map(summary))
+    return
+  }
+
+  if (url.pathname === '/api/macros') {
+    json(res, [...macros.values()])
+    return
+  }
+
+  if (url.pathname === '/api/runs') {
+    json(res, recentRuns())
     return
   }
 
@@ -121,6 +147,12 @@ function summary(device: DeviceRecord): DeviceSummary {
   }
 }
 
+function recentRuns(): RunRecord[] {
+  return [...runs.values()]
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, 20)
+}
+
 function send(ws: WsSocket, message: ServerMessage) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message))
 }
@@ -131,6 +163,75 @@ function broadcast(message: ServerMessage) {
     if (admin.readyState === admin.OPEN) admin.send(payload)
   }
 }
+
+function sendMacros(ws: WsSocket) {
+  send(ws, { t: 'macros', macros: [...macros.values()] })
+}
+
+function sendRuns(ws: WsSocket) {
+  send(ws, { t: 'runs', runs: recentRuns() })
+}
+
+// ---------------------------------------------------------------------
+// Macro persistence
+// ---------------------------------------------------------------------
+
+function loadMacros() {
+  if (!existsSync(MACROS_FILE)) {
+    const sample: Macro = {
+      id: 'sample-settings-network',
+      name: 'Settings — open Network & internet',
+      appPackage: 'com.android.settings',
+      steps: [
+        { op: 'launch', package: 'com.android.settings' },
+        {
+          op: 'waitFor',
+          selector: { text: 'Network & internet' },
+          timeoutMs: 8000
+        },
+        {
+          op: 'tap',
+          selector: { text: 'Network & internet' },
+          expect: { text: 'Internet' }
+        },
+        { op: 'screenshot', label: 'network' }
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }
+    macros.set(sample.id, sample)
+    saveMacros()
+    return
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(MACROS_FILE, 'utf8')) as Macro[]
+    for (const macro of parsed) {
+      if (macro?.id && macro?.name && Array.isArray(macro.steps)) {
+        macros.set(macro.id, macro)
+      }
+    }
+  } catch (error) {
+    log('failed to load macros', error)
+  }
+}
+
+function saveMacros() {
+  try {
+    mkdirSync(DATA_DIR, { recursive: true })
+    const temp = `${MACROS_FILE}.tmp`
+    writeFileSync(temp, JSON.stringify([...macros.values()], null, 2))
+    renameSync(temp, MACROS_FILE)
+  } catch (error) {
+    log('failed to save macros', error)
+  }
+}
+
+loadMacros()
+
+// ---------------------------------------------------------------------
+// WebSocket relay
+// ---------------------------------------------------------------------
 
 const wss = new WebSocketServer({ noServer: true })
 
@@ -171,6 +272,8 @@ wss.on('connection', (ws) => {
       if (role === 'admin') {
         admins.add(ws)
         send(ws, { t: 'devices', devices: [...devices.values()].map(summary) })
+        sendMacros(ws)
+        sendRuns(ws)
         log('admin connected')
         return
       }
@@ -235,6 +338,50 @@ wss.on('connection', (ws) => {
         case 'actionResult':
           broadcast({ t: 'actionResult', deviceId, ...msg })
           break
+        case 'recordEvent':
+          broadcast({ t: 'recordEvent', deviceId, event: msg.event })
+          break
+        case 'recordingState':
+          broadcast({ t: 'recordingState', deviceId, recording: !!msg.recording })
+          break
+        case 'runStarted': {
+          const run: RunRecord = runs.get(msg.runId) ?? {
+            id: msg.runId,
+            macroId: msg.macroId ?? '',
+            macroName: msg.macroName ?? 'macro',
+            deviceId,
+            status: 'running',
+            startedAt: msg.startedAt ?? Date.now(),
+            steps: []
+          }
+          run.status = 'running'
+          run.startedAt = msg.startedAt ?? run.startedAt
+          runs.set(run.id, run)
+          broadcast({ t: 'runStarted', run })
+          break
+        }
+        case 'runStep': {
+          const run = runs.get(msg.runId)
+          if (!run) break
+          const step = msg.step as RunStep
+          if (step.snapshot) {
+            step.snapshot = { ...step.snapshot, t: 'snapshot', deviceId } as any
+          }
+          const existing = run.steps.findIndex((s) => s.i === step.i)
+          if (existing >= 0) run.steps[existing] = step
+          else run.steps.push(step)
+          run.steps.sort((a, b) => a.i - b.i)
+          broadcast({ t: 'runStep', runId: run.id, step })
+          break
+        }
+        case 'runFinished': {
+          const run = runs.get(msg.runId)
+          if (!run) break
+          run.status = msg.status ?? 'failed'
+          run.finishedAt = msg.finishedAt ?? Date.now()
+          broadcast({ t: 'runFinished', run })
+          break
+        }
         default:
           break
       }
@@ -242,17 +389,82 @@ wss.on('connection', (ws) => {
     }
 
     if (role === 'admin') {
+      if (msg.t === 'macroList') {
+        sendMacros(ws)
+        return
+      }
+
+      if (msg.t === 'macroSave') {
+        const incoming = msg.macro as Macro
+        if (!incoming?.name || !Array.isArray(incoming.steps)) {
+          fail('invalid macro')
+          return
+        }
+        const macro: Macro = {
+          ...incoming,
+          id: incoming.id || randomUUID(),
+          createdAt: incoming.createdAt ?? Date.now(),
+          updatedAt: Date.now()
+        }
+        macros.set(macro.id, macro)
+        saveMacros()
+        broadcast({ t: 'macroSaved', macro })
+        broadcast({ t: 'macros', macros: [...macros.values()] })
+        return
+      }
+
+      if (msg.t === 'macroDelete') {
+        const id = String(msg.macroId ?? '')
+        if (id) macros.delete(id)
+        saveMacros()
+        broadcast({ t: 'macros', macros: [...macros.values()] })
+        return
+      }
+
       if (msg.t === 'cmd') {
         const target = msg.deviceId ? devices.get(String(msg.deviceId)) : undefined
         if (!target || !target.online) {
           fail(`device offline: ${msg.deviceId ?? '?'}`)
           return
         }
+
+        if (msg.action === 'runMacro') {
+          const macro = macros.get(String(msg.macroId))
+          if (!macro) {
+            fail(`unknown macro: ${msg.macroId}`)
+            return
+          }
+          const runId = randomUUID()
+          const params =
+            msg.params && typeof msg.params === 'object' ? msg.params : {}
+          const run: RunRecord = {
+            id: runId,
+            macroId: macro.id,
+            macroName: macro.name,
+            deviceId: target.id,
+            status: 'running',
+            startedAt: Date.now(),
+            steps: [],
+            params
+          }
+          runs.set(runId, run)
+          broadcast({ t: 'runStarted', run })
+          target.ws.send(
+            JSON.stringify({
+              t: 'cmd',
+              cmdId: msg.cmdId ?? randomUUID(),
+              deviceId: target.id,
+              action: 'runMacro',
+              runId,
+              macro,
+              params
+            })
+          )
+          return
+        }
+
         target.ws.send(JSON.stringify({ ...msg, deviceId: target.id }))
         return
-      }
-      if (msg.t === 'list') {
-        send(ws, { t: 'devices', devices: [...devices.values()].map(summary) })
       }
     }
   })
@@ -288,6 +500,7 @@ server.listen(PORT, () => {
   log(`RC relay listening on http://0.0.0.0:${PORT}`)
   log(`WebSocket: ws://0.0.0.0:${PORT}/ws  token=${TOKEN}`)
   log(`Serving web build from ${WEB_DIST}`)
+  log(`${macros.size} macro(s), ${runs.size} run(s) in memory`)
 })
 
 function shutdown() {

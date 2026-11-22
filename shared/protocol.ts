@@ -145,6 +145,138 @@ export interface HelloOkMessage {
   deviceId: string
 }
 
+export interface Selector {
+  viewId?: string
+  text?: string
+  contains?: string
+  desc?: string
+  className?: string
+}
+
+export type MacroOp =
+  | 'launch'
+  | 'waitFor'
+  | 'waitForIdle'
+  | 'tap'
+  | 'tapIfExists'
+  | 'setText'
+  | 'scroll'
+  | 'globalAction'
+  | 'screenshot'
+  | 'assert'
+  | 'sleep'
+
+export interface MacroStep {
+  op: MacroOp
+  package?: string
+  selector?: Selector
+  text?: string
+  timeoutMs?: number
+  expect?: Selector
+  optional?: boolean
+  dir?: 'up' | 'down'
+  name?: string
+  label?: string
+  ms?: number
+}
+
+export interface MacroParam {
+  type: 'string' | 'number'
+  required?: boolean
+  default?: string | number
+}
+
+export interface Macro {
+  id: string
+  name: string
+  appPackage?: string
+  params?: Record<string, MacroParam>
+  steps: MacroStep[]
+  createdAt?: number
+  updatedAt?: number
+}
+
+export type RunStatus = 'running' | 'success' | 'failed' | 'unverified' | 'cancelled'
+export type StepStatus = 'ok' | 'failed' | 'unverified' | 'skipped' | 'running'
+
+export interface RunStep {
+  i: number
+  op: string
+  status: StepStatus
+  ms?: number
+  error?: string | null
+  label?: string
+  snapshot?: SnapshotMessage
+}
+
+export interface RunRecord {
+  id: string
+  macroId: string
+  macroName: string
+  deviceId: string
+  status: RunStatus
+  startedAt: number
+  finishedAt?: number
+  steps: RunStep[]
+  params?: Record<string, unknown>
+}
+
+export interface RecordEvent {
+  ts: number
+  type: 'text' | 'tap' | 'scroll' | 'window'
+  app?: string | null
+  appLabel?: string | null
+  activity?: string | null
+  text?: string | null
+  delta?: string | null
+  before?: string | null
+  label?: string | null
+  redacted?: boolean
+}
+
+export interface MacrosMessage {
+  t: 'macros'
+  macros: Macro[]
+}
+
+export interface MacroSavedMessage {
+  t: 'macroSaved'
+  macro: Macro
+}
+
+export interface RunsMessage {
+  t: 'runs'
+  runs: RunRecord[]
+}
+
+export interface RunStartedMessage {
+  t: 'runStarted'
+  run: RunRecord
+}
+
+export interface RunStepMessage {
+  t: 'runStep'
+  runId: string
+  step: RunStep
+}
+
+export interface RunFinishedMessage {
+  t: 'runFinished'
+  run: RunRecord
+}
+
+export interface RecordEventMessage {
+  t: 'recordEvent'
+  deviceId: string
+  event: RecordEvent
+}
+
+export interface RecordingStateMessage {
+  t: 'recordingState'
+  deviceId: string
+  recording: boolean
+}
+
 export type ServerMessage =
   | DevicesMessage
   | DeviceMessage
@@ -155,6 +287,14 @@ export type ServerMessage =
   | ProbeMessage
   | ErrorMessage
   | HelloOkMessage
+  | MacrosMessage
+  | MacroSavedMessage
+  | RunsMessage
+  | RunStartedMessage
+  | RunStepMessage
+  | RunFinishedMessage
+  | RecordEventMessage
+  | RecordingStateMessage
 
 export type ActionName =
   | 'listApps'
@@ -167,6 +307,10 @@ export type ActionName =
   | 'globalAction'
   | 'probe'
   | 'probeTargets'
+  | 'runMacro'
+  | 'cancelRun'
+  | 'startRecording'
+  | 'stopRecording'
 
 export interface CommandMessage {
   t: 'cmd'

@@ -64,3 +64,19 @@ On the device, open **RC Agent**, keep the relay URL
 (`ws://10.0.2.2:8787/ws` on an emulator, `ws://<host-ip>:8787/ws` on a phone),
 and tap **Save & connect**. See [`server/README.md`](server/README.md) and
 [`web/README.md`](web/README.md).
+
+### Phase 2: macros, runs, recorder
+
+The web panel now has four tabs:
+
+- **Control** — apps, probe, snapshot, tap/type/scroll.
+- **Macros** — JSON macro editor, parameters, save/delete, run.
+- **Recorder** — start/stop recording and watch live text input, taps, scrolls,
+  and window changes per app. Text is captured from accessibility text-change
+  events, so typing `hi` in a chatbox shows the app and `hi`; password fields
+  are redacted.
+- **Runs** — run history with per-step status, timing, errors, and checkpoint
+  screenshots.
+
+A sample macro **Settings — open Network & internet** is seeded by the relay.
+Macros persist in `server/data/macros.json`.

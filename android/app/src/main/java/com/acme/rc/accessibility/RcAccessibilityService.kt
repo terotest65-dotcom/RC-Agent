@@ -15,8 +15,10 @@ import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.content.ContextCompat
+import com.acme.rc.agent.AgentService
 import com.acme.rc.model.Element
 import com.acme.rc.model.ProbeResult
+import com.acme.rc.model.Selector
 import com.acme.rc.model.Snapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -74,6 +76,13 @@ class RcAccessibilityService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             event.packageName?.toString()?.let { currentPackage = it }
             event.className?.toString()?.let { currentActivity = it }
+        }
+        if (AgentService.recording) {
+            try {
+                AgentService.instance?.onRecordEvent(event)
+            } catch (_: Throwable) {
+                // The recorder must never break accessibility delivery.
+            }
         }
     }
 
@@ -321,6 +330,162 @@ class RcAccessibilityService : AccessibilityService() {
             else -> return false
         }
         return performGlobalAction(action)
+    }
+
+    fun exists(selector: Selector): Boolean = findNode(selector) != null
+
+    fun findNode(selector: Selector): AccessibilityNodeInfo? {
+        val root = activeRoot() ?: return null
+        return search(root, selector, 0)
+    }
+
+    fun tapSelector(selector: Selector): Boolean {
+        val node = findNode(selector) ?: return false
+        val target = findClickableAncestor(node) ?: node
+        if (target.isClickable) {
+            try {
+                if (target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
+            } catch (_: Throwable) {
+                // Fall through to a coordinate tap.
+            }
+        }
+        val bounds = Rect()
+        return try {
+            node.getBoundsInScreen(bounds)
+            if (bounds.isEmpty) false else tapAt(bounds.centerX(), bounds.centerY())
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    fun setTextSelector(selector: Selector, text: String): Boolean {
+        val node = findNode(selector) ?: return false
+        val target = if (node.isEditable) node else findEditableAncestor(node) ?: node
+        return try {
+            target.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            val arguments = Bundle().apply {
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    text
+                )
+            }
+            target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    fun scrollSelector(selector: Selector, down: Boolean): Boolean {
+        val node = findNode(selector) ?: return false
+        val target = if (node.isScrollable) node else findScrollableAncestor(node)
+        val action = if (down) {
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        } else {
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        }
+        if (target != null) {
+            try {
+                if (target.performAction(action)) return true
+            } catch (_: Throwable) {
+                // Fall back to a swipe.
+            }
+        }
+        val bounds = Rect()
+        return try {
+            node.getBoundsInScreen(bounds)
+            if (bounds.isEmpty) return false
+            val centerX = bounds.centerX()
+            val startY = if (down) bounds.bottom - 24 else bounds.top + 24
+            val endY = if (down) bounds.top + 24 else bounds.bottom - 24
+            swipe(centerX, startY, centerX, endY, 320)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun activeRoot(): AccessibilityNodeInfo? = try {
+        getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun search(
+        node: AccessibilityNodeInfo?,
+        selector: Selector,
+        depth: Int
+    ): AccessibilityNodeInfo? {
+        if (node == null || depth > 60) return null
+        if (matches(node, selector)) return node
+        for (i in 0 until node.childCount) {
+            search(node.getChild(i), selector, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    private fun matches(node: AccessibilityNodeInfo, selector: Selector): Boolean {
+        val hasAny = !selector.viewId.isNullOrBlank() || !selector.text.isNullOrBlank() ||
+            !selector.contains.isNullOrBlank() || !selector.desc.isNullOrBlank() ||
+            !selector.className.isNullOrBlank()
+        if (!hasAny) return false
+        if (!selector.viewId.isNullOrBlank() &&
+            node.viewIdResourceName != selector.viewId
+        ) return false
+        val text = node.text?.toString()
+        if (!selector.text.isNullOrBlank() && text != selector.text) return false
+        if (!selector.contains.isNullOrBlank() &&
+            text?.contains(selector.contains) != true
+        ) return false
+        val description = node.contentDescription?.toString()
+        if (!selector.desc.isNullOrBlank() && description != selector.desc) return false
+        if (!selector.className.isNullOrBlank() &&
+            node.className?.toString() != selector.className
+        ) return false
+        return true
+    }
+
+    private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current: AccessibilityNodeInfo? = node
+        repeat(6) {
+            val value = current ?: return null
+            if (value.isClickable) return value
+            current = try {
+                value.parent
+            } catch (_: Throwable) {
+                null
+            }
+        }
+        return null
+    }
+
+    private fun findEditableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current: AccessibilityNodeInfo? = node
+        repeat(6) {
+            val value = current ?: return null
+            val supportsSetText = value.actionList.any {
+                it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_TEXT.id
+            }
+            if (value.isEditable || supportsSetText) return value
+            current = try {
+                value.parent
+            } catch (_: Throwable) {
+                null
+            }
+        }
+        return null
+    }
+
+    private fun findScrollableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current: AccessibilityNodeInfo? = node
+        repeat(6) {
+            val value = current ?: return null
+            if (value.isScrollable) return value
+            current = try {
+                value.parent
+            } catch (_: Throwable) {
+                null
+            }
+        }
+        return null
     }
 
     private fun findBySelector(

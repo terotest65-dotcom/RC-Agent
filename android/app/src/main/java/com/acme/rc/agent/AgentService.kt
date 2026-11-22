@@ -12,8 +12,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
+import android.view.accessibility.AccessibilityEvent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
@@ -24,6 +26,7 @@ import com.acme.rc.inventory.AppInventory
 import com.acme.rc.model.AppInfo
 import com.acme.rc.model.Element
 import com.acme.rc.model.ProbeResult
+import com.acme.rc.model.Selector
 import com.acme.rc.model.Snapshot
 import com.acme.rc.model.TargetApps
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +56,13 @@ class AgentService : Service() {
         const val ACTION_STOP = "com.acme.rc.agent.STOP"
         private const val CHANNEL_ID = "rc_agent"
         private const val NOTIFICATION_ID = 41
+
+        @Volatile
+        var instance: AgentService? = null
+            private set
+
+        @Volatile
+        var recording: Boolean = false
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -75,6 +85,9 @@ class AgentService : Service() {
     @Volatile
     private var lastSnapshot: Snapshot? = null
 
+    private val lastTexts = mutableMapOf<String, String>()
+    private val cancelledRuns = mutableSetOf<String>()
+
     private var reconnectAttempt = 0
     private var reconnectJob: Job? = null
 
@@ -82,6 +95,7 @@ class AgentService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         createChannel()
         startForegroundCompat("Starting…")
         AgentConnection.serverUrl = AgentConfig.serverUrl(this)
@@ -91,6 +105,7 @@ class AgentService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             shouldReconnect = false
+            recording = false
             stopSelf()
             return START_NOT_STICKY
         }
@@ -106,6 +121,8 @@ class AgentService : Service() {
 
     override fun onDestroy() {
         shouldReconnect = false
+        recording = false
+        instance = null
         reconnectJob?.cancel()
         socket?.close(1000, "service stopped")
         socket = null
@@ -187,7 +204,7 @@ class AgentService : Service() {
             .put("name", AgentConfig.deviceName())
             .put("model", Build.MODEL)
             .put("android", Build.VERSION.SDK_INT)
-            .put("agent", "1.0.0")
+            .put("agent", "1.1.0")
             .put("protocolVersion", 1)
         ws.send(hello.toString())
     }
@@ -248,10 +265,33 @@ class AgentService : Service() {
     }
 
     private fun handleCommand(msg: JSONObject) {
+        val action = msg.optString("action")
+        val cmdId = msg.optString("cmdId")
+
+        // These must not wait behind a long macro run.
+        when (action) {
+            "cancelRun" -> {
+                cancelledRuns.add(msg.optString("runId"))
+                sendResult(cmdId, true)
+                return
+            }
+            "startRecording" -> {
+                recording = true
+                lastTexts.clear()
+                sendRecordingState(true)
+                sendResult(cmdId, true)
+                return
+            }
+            "stopRecording" -> {
+                recording = false
+                sendRecordingState(false)
+                sendResult(cmdId, true)
+                return
+            }
+        }
+
         scope.launch {
             commandMutex.withLock {
-                val cmdId = msg.optString("cmdId")
-                val action = msg.optString("action")
                 try {
                     when (action) {
                         "listApps" -> sendAppsNow()
@@ -323,6 +363,13 @@ class AgentService : Service() {
                             }
                             captureAndSend()
                         }
+                        "runMacro" -> {
+                            val runId = msg.optString("runId")
+                            val macro = msg.optJSONObject("macro")
+                                ?: error("macro missing")
+                            val params = msg.optJSONObject("params") ?: JSONObject()
+                            runMacro(runId, macro, params)
+                        }
                         else -> error("unknown action: $action")
                     }
                     sendResult(cmdId, true)
@@ -380,6 +427,369 @@ class AgentService : Service() {
             .put("error", result.error ?: JSONObject.NULL)
             .put("probedAt", result.probedAt)
         socket?.send(JSONObject().put("t", "probe").put("result", payload).toString())
+    }
+
+    // -----------------------------------------------------------------
+    // Macro engine
+    // -----------------------------------------------------------------
+
+    private data class Step(
+        val op: String,
+        val pkg: String?,
+        val selector: Selector?,
+        val text: String?,
+        val timeoutMs: Long,
+        val expect: Selector?,
+        val optional: Boolean,
+        val dir: String?,
+        val name: String?,
+        val label: String?,
+        val ms: Long
+    )
+
+    private data class StepResult(val status: String, val error: String? = null)
+
+    private suspend fun runMacro(runId: String, macro: JSONObject, params: JSONObject) {
+        val macroId = macro.optString("id")
+        val macroName = macro.optString("name", "macro")
+        val stepsJson = macro.optJSONArray("steps") ?: JSONArray()
+        val steps = mutableListOf<Step>()
+        for (i in 0 until stepsJson.length()) {
+            steps.add(parseStep(stepsJson.optJSONObject(i), params))
+        }
+
+        val startedAt = System.currentTimeMillis()
+        socket?.send(
+            JSONObject()
+                .put("t", "runStarted")
+                .put("runId", runId)
+                .put("macroId", macroId)
+                .put("macroName", macroName)
+                .put("startedAt", startedAt)
+                .toString()
+        )
+
+        var status = "success"
+        var cancelled = false
+
+        for ((index, step) in steps.withIndex()) {
+            if (cancelledRuns.remove(runId)) {
+                cancelled = true
+                break
+            }
+
+            val stepStarted = SystemClock.elapsedRealtime()
+            var stepStatus = "ok"
+            var error: String? = null
+            var snapshot: Snapshot? = null
+
+            try {
+                val result = executeStep(step)
+                stepStatus = result.status
+                error = result.error
+                when (result.status) {
+                    "failed" -> status = "failed"
+                    "unverified" -> if (status == "success") status = "unverified"
+                }
+                if (stepStatus != "skipped") {
+                    snapshot = captureForReport(step)
+                }
+            } catch (t: Throwable) {
+                stepStatus = "failed"
+                error = t.message ?: t.javaClass.simpleName
+                status = "failed"
+                try {
+                    snapshot = service().captureSnapshot()
+                } catch (_: Throwable) {
+                    // Keep the report even if the final screenshot fails.
+                }
+            }
+
+            sendRunStep(
+                runId = runId,
+                index = index,
+                step = step,
+                status = stepStatus,
+                ms = SystemClock.elapsedRealtime() - stepStarted,
+                error = error,
+                snapshot = snapshot
+            )
+
+            if (stepStatus == "failed") break
+        }
+
+        if (cancelled || cancelledRuns.remove(runId)) status = "cancelled"
+
+        socket?.send(
+            JSONObject()
+                .put("t", "runFinished")
+                .put("runId", runId)
+                .put("status", status)
+                .put("finishedAt", System.currentTimeMillis())
+                .toString()
+        )
+    }
+
+    private suspend fun executeStep(step: Step): StepResult {
+        val service = service()
+
+        when (step.op) {
+            "launch" -> {
+                val pkg = step.pkg ?: return StepResult("failed", "launch requires package")
+                if (!service.launchApp(pkg)) return StepResult("failed", "launch failed: $pkg")
+                delay(1500)
+                service.awaitPackage(pkg, 5000)
+                delay(800)
+            }
+            "waitFor" -> {
+                val selector = step.selector
+                    ?: return StepResult("failed", "waitFor requires selector")
+                if (!waitForSelector(service, selector, step.timeoutMs)) {
+                    return StepResult("failed", "timeout waiting for selector")
+                }
+            }
+            "waitForIdle" -> delay(500)
+            "tap" -> {
+                val selector = step.selector
+                    ?: return StepResult("failed", "tap requires selector")
+                if (!service.tapSelector(selector)) return StepResult("failed", "tap failed")
+                delay(600)
+            }
+            "tapIfExists" -> {
+                val selector = step.selector
+                    ?: return StepResult("failed", "tapIfExists requires selector")
+                if (!service.exists(selector)) return StepResult("skipped")
+                if (!service.tapSelector(selector)) return StepResult("failed", "tap failed")
+                delay(600)
+            }
+            "setText" -> {
+                val selector = step.selector
+                    ?: return StepResult("failed", "setText requires selector")
+                if (!service.setTextSelector(selector, step.text ?: "")) {
+                    return StepResult("failed", "setText failed")
+                }
+                delay(500)
+            }
+            "scroll" -> {
+                val selector = step.selector
+                    ?: return StepResult("failed", "scroll requires selector")
+                if (!service.scrollSelector(selector, step.dir != "up")) {
+                    return StepResult("failed", "scroll failed")
+                }
+                delay(500)
+            }
+            "globalAction" -> {
+                val name = step.name
+                    ?: return StepResult("failed", "globalAction requires name")
+                if (!service.performGlobalActionByName(name)) {
+                    return StepResult("failed", "global action failed")
+                }
+                delay(500)
+            }
+            "screenshot" -> Unit
+            "assert" -> {
+                val selector = step.selector
+                    ?: return StepResult("failed", "assert requires selector")
+                if (!service.exists(selector)) return StepResult("failed", "assert failed")
+            }
+            "sleep" -> delay(step.ms)
+            else -> return StepResult("failed", "unknown op: ${step.op}")
+        }
+
+        if (step.expect != null) {
+            delay(300)
+            if (!service.exists(step.expect)) {
+                return StepResult("unverified", "expect not met")
+            }
+        }
+
+        return StepResult("ok")
+    }
+
+    private suspend fun waitForSelector(
+        service: RcAccessibilityService,
+        selector: Selector,
+        timeoutMs: Long
+    ): Boolean {
+        val started = SystemClock.elapsedRealtime()
+        while (SystemClock.elapsedRealtime() - started < timeoutMs) {
+            if (service.exists(selector)) return true
+            delay(250)
+        }
+        return service.exists(selector)
+    }
+
+    private suspend fun captureForReport(step: Step): Snapshot? {
+        return when (step.op) {
+            "waitFor", "waitForIdle", "sleep" -> null
+            else -> try {
+                service().captureSnapshot()
+            } catch (_: Throwable) {
+                null
+            }
+        }
+    }
+
+    private fun parseStep(json: JSONObject?, params: JSONObject): Step {
+        val obj = json ?: JSONObject()
+        return Step(
+            op = obj.optString("op"),
+            pkg = resolve(obj.optString("package").takeIf { it.isNotBlank() }, params),
+            selector = parseSelector(obj.optJSONObject("selector"), params),
+            text = resolve(obj.optString("text").takeIf { it.isNotBlank() }, params),
+            timeoutMs = obj.optLong("timeoutMs", 5000L),
+            expect = parseSelector(obj.optJSONObject("expect"), params),
+            optional = obj.optBoolean("optional", false),
+            dir = obj.optString("dir").takeIf { it.isNotBlank() },
+            name = resolve(obj.optString("name").takeIf { it.isNotBlank() }, params),
+            label = resolve(obj.optString("label").takeIf { it.isNotBlank() }, params),
+            ms = obj.optLong("ms", 500L)
+        )
+    }
+
+    private fun parseSelector(json: JSONObject?, params: JSONObject): Selector? {
+        if (json == null) return null
+        val selector = Selector(
+            viewId = json.optString("viewId").takeIf { it.isNotBlank() },
+            text = resolve(json.optString("text").takeIf { it.isNotBlank() }, params),
+            contains = resolve(json.optString("contains").takeIf { it.isNotBlank() }, params),
+            desc = resolve(json.optString("desc").takeIf { it.isNotBlank() }, params),
+            className = json.optString("className").takeIf { it.isNotBlank() }
+        )
+        return if (selector == Selector()) null else selector
+    }
+
+    private fun resolve(value: String?, params: JSONObject): String? {
+        var result = value ?: return null
+        val keys = params.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            result = result.replace("{{$key}}", params.optString(key, ""))
+        }
+        return result
+    }
+
+    private fun sendRunStep(
+        runId: String,
+        index: Int,
+        step: Step,
+        status: String,
+        ms: Long,
+        error: String?,
+        snapshot: Snapshot?
+    ) {
+        val payload = JSONObject()
+            .put("i", index)
+            .put("op", step.op)
+            .put("status", status)
+            .put("ms", ms)
+            .put("error", error ?: JSONObject.NULL)
+            .put("label", step.label ?: JSONObject.NULL)
+        if (snapshot != null) payload.put("snapshot", snapshotJson(snapshot))
+        socket?.send(
+            JSONObject()
+                .put("t", "runStep")
+                .put("runId", runId)
+                .put("step", payload)
+                .toString()
+        )
+    }
+
+    // -----------------------------------------------------------------
+    // Recorder
+    // -----------------------------------------------------------------
+
+    fun onRecordEvent(event: AccessibilityEvent) {
+        if (!recording) return
+
+        val type = when (event.eventType) {
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> "text"
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> "tap"
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> "scroll"
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "window"
+            else -> return
+        }
+
+        val app = event.packageName?.toString()
+        val activity = event.className?.toString()
+
+        // The keyboard window is noise for a "what did the user type" feed.
+        if (type == "window" &&
+            (app?.contains("inputmethod") == true || app?.contains("keyboard") == true)
+        ) {
+            return
+        }
+
+        val payload = JSONObject()
+            .put("ts", System.currentTimeMillis())
+            .put("type", type)
+            .put("app", app ?: JSONObject.NULL)
+            .put("appLabel", resolveAppLabel(app) ?: JSONObject.NULL)
+            .put("activity", activity ?: JSONObject.NULL)
+
+        when (type) {
+            "text" -> {
+                val sourceId = try {
+                    event.source?.viewIdResourceName
+                } catch (_: Throwable) {
+                    null
+                }
+                val key = "${event.windowId}:${event.className}:${sourceId ?: ""}"
+                val current = event.text?.joinToString("") ?: ""
+
+                if (event.isPassword) {
+                    payload.put("redacted", true)
+                    payload.put("text", JSONObject.NULL)
+                    payload.put("delta", JSONObject.NULL)
+                    payload.put("before", JSONObject.NULL)
+                } else {
+                    val previous = lastTexts[key]
+                    val delta = when {
+                        previous == null -> current
+                        current.startsWith(previous) -> current.substring(previous.length)
+                        previous.startsWith(current) -> ""
+                        else -> current
+                    }
+                    lastTexts[key] = current
+                    payload.put("text", current)
+                    payload.put("delta", delta)
+                    payload.put("before", previous ?: JSONObject.NULL)
+                    payload.put("redacted", false)
+                }
+            }
+            "tap" -> {
+                val label = event.text?.firstOrNull()?.toString()
+                    ?: event.contentDescription?.toString()
+                payload.put("label", label ?: JSONObject.NULL)
+            }
+            "scroll", "window" -> Unit
+        }
+
+        socket?.send(
+            JSONObject()
+                .put("t", "recordEvent")
+                .put("event", payload)
+                .toString()
+        )
+    }
+
+    private fun sendRecordingState(recording: Boolean) {
+        socket?.send(
+            JSONObject()
+                .put("t", "recordingState")
+                .put("recording", recording)
+                .toString()
+        )
+    }
+
+    private fun resolveAppLabel(pkg: String?): String? {
+        if (pkg.isNullOrBlank()) return null
+        return try {
+            val info = packageManager.getApplicationInfo(pkg, 0)
+            packageManager.getApplicationLabel(info).toString()
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     // -----------------------------------------------------------------

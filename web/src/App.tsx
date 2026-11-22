@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { TARGET_APPS } from '../../shared/protocol'
 import type {
   ActionName,
   AppInfo,
   DeviceSummary,
   Element,
+  Macro,
   ProbeResult,
+  RecordEvent,
+  RunRecord,
   ServerMessage,
   SnapshotMessage
 } from '../../shared/protocol'
@@ -16,6 +20,18 @@ const TOKEN =
   'dev'
 
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
+
+const DEFAULT_MACRO = `{
+  "name": "Chrome — open example.com",
+  "appPackage": "com.android.chrome",
+  "steps": [
+    { "op": "launch", "package": "com.android.chrome" },
+    { "op": "waitForIdle" },
+    { "op": "screenshot", "label": "chrome" }
+  ]
+}`
+
+type Tab = 'control' | 'macros' | 'recorder' | 'runs'
 
 function nowLabel() {
   return new Date().toLocaleTimeString()
@@ -30,30 +46,52 @@ export default function App() {
   const [log, setLog] = useState<string[]>([])
   const [editing, setEditing] = useState<{ element: Element; text: string } | null>(null)
 
+  const [tab, setTab] = useState<Tab>('control')
+  const [macros, setMacros] = useState<Macro[]>([])
+  const [macroDraft, setMacroDraft] = useState(DEFAULT_MACRO)
+  const [macroError, setMacroError] = useState<string | null>(null)
+  const [runs, setRuns] = useState<RunRecord[]>([])
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [recording, setRecording] = useState(false)
+  const [recordEvents, setRecordEvents] = useState<RecordEvent[]>([])
+
   const wsRef = useRef<WebSocket | null>(null)
   const selectedRef = useRef<string | null>(null)
 
   const appendLog = useCallback((line: string) => {
-    setLog((prev) => [`${nowLabel()}  ${line}`, ...prev].slice(0, 200))
+    setLog((prev) => [`${nowLabel()}  ${line}`, ...prev].slice(0, 250))
   }, [])
 
   useEffect(() => {
     selectedRef.current = selectedId
   }, [selectedId])
 
-  const sendCmd = useCallback(
-    (deviceId: string, action: ActionName, extra: Record<string, unknown> = {}) => {
+  const sendRaw = useCallback(
+    (message: object) => {
       const ws = wsRef.current
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         appendLog('not connected')
         return
       }
-      const cmdId = crypto.randomUUID()
-      setBusy(true)
-      ws.send(JSON.stringify({ t: 'cmd', cmdId, deviceId, action, ...extra }))
-      appendLog(`→ ${action} ${Object.keys(extra).length ? JSON.stringify(extra) : ''}`)
+      ws.send(JSON.stringify(message))
     },
     [appendLog]
+  )
+
+  const sendCmd = useCallback(
+    (
+      deviceId: string,
+      action: ActionName,
+      extra: Record<string, unknown> = {},
+      trackBusy = true
+    ) => {
+      if (trackBusy) setBusy(true)
+      sendRaw({ t: 'cmd', cmdId: crypto.randomUUID(), deviceId, action, ...extra })
+      appendLog(
+        `→ ${action} ${Object.keys(extra).length ? JSON.stringify(extra) : ''}`
+      )
+    },
+    [appendLog, sendRaw]
   )
 
   const handleMessage = useCallback(
@@ -76,24 +114,24 @@ export default function App() {
           })
           break
         }
-        case 'apps': {
+        case 'apps':
           setDevices((prev) =>
             prev.map((d) => (d.id === msg.deviceId ? { ...d, apps: msg.apps } : d))
           )
           break
-        }
-        case 'state': {
+        case 'state':
           setDevices((prev) =>
             prev.map((d) => (d.id === msg.deviceId ? { ...d, state: msg.state } : d))
           )
           break
-        }
-        case 'snapshot': {
+        case 'snapshot':
+          if (msg.deviceId !== selectedRef.current) break
           setSnapshot(msg)
           setBusy(false)
-          appendLog(`snapshot ${msg.id} · ${msg.elements.length} hotspots · ${msg.elapsedMs} ms`)
+          appendLog(
+            `snapshot ${msg.id} · ${msg.elements.length} hotspots · ${msg.elapsedMs} ms`
+          )
           break
-        }
         case 'probe': {
           const result = msg.result
           setDevices((prev) =>
@@ -106,18 +144,69 @@ export default function App() {
           appendLog(`probe ${result.pkg}: ${result.verdict}`)
           break
         }
-        case 'actionResult': {
+        case 'actionResult':
           setBusy(false)
           appendLog(
             `${msg.ok ? 'ok' : 'error'} ${msg.cmdId}${msg.error ? ` · ${msg.error}` : ''}`
           )
           break
-        }
-        case 'error': {
+        case 'error':
           setBusy(false)
           appendLog(`server: ${msg.message}`)
           break
-        }
+        case 'macros':
+          setMacros(msg.macros)
+          break
+        case 'macroSaved':
+          setMacros((prev) => {
+            const exists = prev.some((m) => m.id === msg.macro.id)
+            return exists
+              ? prev.map((m) => (m.id === msg.macro.id ? msg.macro : m))
+              : [...prev, msg.macro]
+          })
+          setMacroDraft(JSON.stringify(msg.macro, null, 2))
+          appendLog(`macro saved: ${msg.macro.name}`)
+          break
+        case 'runs':
+          setRuns(msg.runs)
+          setSelectedRunId((prev) => prev ?? msg.runs[0]?.id ?? null)
+          break
+        case 'runStarted':
+          setRuns((prev) => [
+            msg.run,
+            ...prev.filter((r) => r.id !== msg.run.id)
+          ])
+          setSelectedRunId(msg.run.id)
+          appendLog(`run started: ${msg.run.macroName}`)
+          break
+        case 'runStep':
+          setRuns((prev) =>
+            prev.map((run) => {
+              if (run.id !== msg.runId) return run
+              const steps = [
+                ...run.steps.filter((s) => s.i !== msg.step.i),
+                msg.step
+              ].sort((a, b) => a.i - b.i)
+              return { ...run, steps }
+            })
+          )
+          appendLog(`run step ${msg.step.i + 1}: ${msg.step.op} ${msg.step.status}`)
+          break
+        case 'runFinished':
+          setRuns((prev) =>
+            prev.map((run) => (run.id === msg.run.id ? msg.run : run))
+          )
+          appendLog(`run finished: ${msg.run.status}`)
+          break
+        case 'recordEvent':
+          if (msg.deviceId !== selectedRef.current) break
+          setRecordEvents((prev) => [msg.event, ...prev].slice(0, 300))
+          break
+        case 'recordingState':
+          if (msg.deviceId !== selectedRef.current) break
+          setRecording(msg.recording)
+          appendLog(msg.recording ? 'recording started' : 'recording stopped')
+          break
         default:
           break
       }
@@ -168,10 +257,12 @@ export default function App() {
     if (!selectedId) return
     setSnapshot(null)
     setEditing(null)
+    setRecordEvents([])
+    setRecording(false)
     const device = devices.find((d) => d.id === selectedId)
     if (device?.online) {
       sendCmd(selectedId, 'snapshot')
-      sendCmd(selectedId, 'listApps')
+      sendCmd(selectedId, 'listApps', {}, false)
     }
     // Selected device changes should not re-run when the device list updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -180,6 +271,14 @@ export default function App() {
   const selected = devices.find((d) => d.id === selectedId) ?? null
   const apps = selected?.apps ?? []
   const probes = selected?.probes ?? {}
+  const activeRun = selected
+    ? runs.find((r) => r.deviceId === selected.id && r.status === 'running')
+    : undefined
+  const actionDisabled = !selected?.online || busy
+  const runDisabled = actionDisabled || !!activeRun
+
+  const appLabel = (pkg?: string | null) =>
+    apps.find((a) => a.pkg === pkg)?.label ?? pkg ?? 'unknown'
 
   const tapElement = (element: Element) => {
     if (!selected || !snapshot) return
@@ -205,6 +304,49 @@ export default function App() {
     setEditing(null)
   }
 
+  const startRecording = () => {
+    if (!selected) return
+    setTab('recorder')
+    setRecordEvents([])
+    setRecording(true)
+    sendCmd(selected.id, 'startRecording', {}, false)
+  }
+
+  const stopRecording = () => {
+    if (!selected) return
+    setRecording(false)
+    sendCmd(selected.id, 'stopRecording', {}, false)
+  }
+
+  const runMacro = (macro: Macro, params: Record<string, string>) => {
+    if (!selected) return
+    setTab('runs')
+    sendCmd(selected.id, 'runMacro', { macroId: macro.id, params }, false)
+  }
+
+  const saveMacro = () => {
+    try {
+      const parsed = JSON.parse(macroDraft)
+      if (!parsed.name || !Array.isArray(parsed.steps)) {
+        throw new Error('"name" and "steps" are required')
+      }
+      sendRaw({ t: 'macroSave', macro: parsed })
+      setMacroError(null)
+    } catch (error) {
+      setMacroError(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  const editMacro = (macro: Macro) => {
+    setMacroDraft(JSON.stringify(macro, null, 2))
+    setMacroError(null)
+    setTab('macros')
+  }
+
+  const deleteMacro = (macro: Macro) => {
+    sendRaw({ t: 'macroDelete', macroId: macro.id })
+  }
+
   const targetsInstalled = apps.filter((a) => TARGET_APPS.includes(a.pkg))
 
   return (
@@ -214,7 +356,7 @@ export default function App() {
           <span className="logo">RC</span>
           <div>
             <h1>RC Agent</h1>
-            <p>Phase 1 · device console</p>
+            <p>Phase 2 · device console, macros, recorder</p>
           </div>
         </div>
         <div className={`conn ${connected ? 'on' : 'off'}`}>
@@ -285,193 +427,182 @@ export default function App() {
                 <div className="toolbar">
                   <button
                     className="btn primary"
-                    disabled={!selected.online || busy}
+                    disabled={actionDisabled}
                     onClick={() => sendCmd(selected.id, 'snapshot')}
                   >
                     Capture
                   </button>
                   <button
                     className="btn"
-                    disabled={!selected.online || busy || targetsInstalled.length === 0}
-                    onClick={() => sendCmd(selected.id, 'probeTargets')}
+                    disabled={actionDisabled || targetsInstalled.length === 0}
+                    onClick={() => sendCmd(selected.id, 'probeTargets', {}, false)}
                   >
                     Probe v1 apps
                   </button>
                   <button
+                    className={`btn ${recording ? 'recording' : ''}`}
+                    disabled={!selected.online || !!activeRun}
+                    onClick={() => {
+                      setTab('recorder')
+                      if (recording) stopRecording()
+                      else startRecording()
+                    }}
+                  >
+                    {recording ? '● Stop recording' : 'Record'}
+                  </button>
+                  <button
                     className="btn"
-                    disabled={!selected.online || busy}
+                    disabled={actionDisabled}
                     onClick={() => sendCmd(selected.id, 'globalAction', { name: 'back' })}
                   >
                     Back
                   </button>
                   <button
                     className="btn"
-                    disabled={!selected.online || busy}
+                    disabled={actionDisabled}
                     onClick={() => sendCmd(selected.id, 'globalAction', { name: 'home' })}
                   >
                     Home
                   </button>
                   <button
                     className="btn"
-                    disabled={!selected.online || busy}
+                    disabled={actionDisabled}
                     onClick={() => sendCmd(selected.id, 'globalAction', { name: 'recents' })}
                   >
                     Recents
                   </button>
                   <button
                     className="btn"
-                    disabled={!selected.online || busy}
-                    onClick={() => sendCmd(selected.id, 'listApps')}
+                    disabled={actionDisabled}
+                    onClick={() => sendCmd(selected.id, 'listApps', {}, false)}
                   >
                     Refresh apps
                   </button>
                 </div>
               </section>
 
-              <section className="panel">
-                <div className="panel-head">
-                  <h2>Apps</h2>
-                  <span className="muted small">{apps.length} installed</span>
-                </div>
-                <div className="apps">
-                  {apps.map((app) => (
-                    <AppRow
-                      key={app.pkg}
-                      app={app}
-                      probe={probes[app.pkg]}
-                      disabled={!selected.online || busy}
-                      onOpen={() => sendCmd(selected.id, 'launch', { pkg: app.pkg })}
-                      onCapture={() => sendCmd(selected.id, 'launch', { pkg: app.pkg })}
-                      onProbe={() => sendCmd(selected.id, 'probe', { pkg: app.pkg })}
-                    />
-                  ))}
-                  {apps.length === 0 && (
-                    <p className="empty">No app inventory yet. Use Refresh apps.</p>
-                  )}
-                </div>
-              </section>
+              <div className="tabs">
+                <TabButton active={tab === 'control'} onClick={() => setTab('control')}>
+                  Control
+                </TabButton>
+                <TabButton active={tab === 'macros'} onClick={() => setTab('macros')}>
+                  Macros
+                </TabButton>
+                <TabButton active={tab === 'recorder'} onClick={() => setTab('recorder')}>
+                  Recorder {recording && <span className="rec-dot" />}
+                </TabButton>
+                <TabButton active={tab === 'runs'} onClick={() => setTab('runs')}>
+                  Runs {activeRun ? <span className="rec-dot" /> : null}
+                </TabButton>
+              </div>
 
-              <section className="panel">
-                <div className="panel-head">
-                  <h2>Snapshot</h2>
-                  {snapshot && (
-                    <span className="muted small">
-                      {snapshot.pkg ?? '?'} · {snapshot.w}×{snapshot.h} ·{' '}
-                      {snapshot.elements.length} hotspots · {snapshot.nodeCount} nodes ·{' '}
-                      {snapshot.elapsedMs} ms
-                    </span>
-                  )}
-                </div>
-
-                {!snapshot && <p className="empty">Capture a screen to see hotspots.</p>}
-
-                {snapshot?.error && (
-                  <p className="error">Capture error: {snapshot.error}</p>
-                )}
-
-                {snapshot && !snapshot.error && (
-                  <>
-                    <div
-                      className="snapshot"
-                      style={{ aspectRatio: `${snapshot.w} / ${snapshot.h}` }}
-                    >
-                      <img
-                        src={`data:image/webp;base64,${snapshot.image}`}
-                        alt="Device screen"
-                      />
-                      {snapshot.elements.map((element) => (
-                        <button
-                          key={element.id}
-                          className="hotspot"
-                          title={elementLabel(element)}
-                          style={{
-                            left: `${element.b[0] * 100}%`,
-                            top: `${element.b[1] * 100}%`,
-                            width: `${(element.b[2] - element.b[0]) * 100}%`,
-                            height: `${(element.b[3] - element.b[1]) * 100}%`
-                          }}
-                          onClick={() => tapElement(element)}
-                          disabled={busy}
-                        >
-                          <span>{element.i}</span>
-                        </button>
-                      ))}
+              {tab === 'control' && (
+                <>
+                  <section className="panel">
+                    <div className="panel-head">
+                      <h2>Apps</h2>
+                      <span className="muted small">{apps.length} installed</span>
                     </div>
-
-                    {editing && (
-                      <div className="edit-row">
-                        <span className="muted small">
-                          Text for #{editing.element.i}
-                        </span>
-                        <input
-                          value={editing.text}
-                          onChange={(event) =>
-                            setEditing({ ...editing, text: event.target.value })
-                          }
-                          placeholder="Type text…"
-                          autoFocus
+                    <div className="apps">
+                      {apps.map((app) => (
+                        <AppRow
+                          key={app.pkg}
+                          app={app}
+                          probe={probes[app.pkg]}
+                          disabled={runDisabled}
+                          onOpen={() => sendCmd(selected.id, 'launch', { pkg: app.pkg })}
+                          onCapture={() => sendCmd(selected.id, 'launch', { pkg: app.pkg })}
+                          onProbe={() => sendCmd(selected.id, 'probe', { pkg: app.pkg })}
                         />
-                        <button className="btn primary" onClick={sendText} disabled={busy}>
-                          Set text
-                        </button>
-                        <button className="btn" onClick={() => setEditing(null)}>
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="elements">
-                      {snapshot.elements.map((element) => (
-                        <div className="element" key={element.id}>
-                          <span className="index">#{element.i}</span>
-                          <div className="element-main">
-                            <div>{elementLabel(element)}</div>
-                            <div className="muted small">
-                              {element.cls}
-                              {element.vid ? ` · ${element.vid}` : ''}
-                              {element.acts.length ? ` · ${element.acts.join(', ')}` : ''}
-                            </div>
-                          </div>
-                          <button
-                            className="btn small"
-                            onClick={() => tapElement(element)}
-                            disabled={busy}
-                          >
-                            Tap
-                          </button>
-                          {element.editable && (
-                            <button
-                              className="btn small"
-                              onClick={() => setEditing({ element, text: '' })}
-                              disabled={busy}
-                            >
-                              Type
-                            </button>
-                          )}
-                          {element.scrollable && (
-                            <>
-                              <button
-                                className="btn small"
-                                onClick={() => scrollElement(element, 'up')}
-                                disabled={busy}
-                              >
-                                ↑
-                              </button>
-                              <button
-                                className="btn small"
-                                onClick={() => scrollElement(element, 'down')}
-                                disabled={busy}
-                              >
-                                ↓
-                              </button>
-                            </>
-                          )}
-                        </div>
                       ))}
+                      {apps.length === 0 && (
+                        <p className="empty">No app inventory yet. Use Refresh apps.</p>
+                      )}
                     </div>
-                  </>
-                )}
-              </section>
+                  </section>
+
+                  <SnapshotCard
+                    snapshot={snapshot}
+                    busy={busy}
+                    status={null}
+                    onCaptureCurrent={() => sendCmd(selected.id, 'snapshot')}
+                    editing={editing}
+                    setEditing={setEditing}
+                    onTapElement={tapElement}
+                    onScrollElement={scrollElement}
+                    onSendText={sendText}
+                  />
+                </>
+              )}
+
+              {tab === 'macros' && (
+                <section className="panel">
+                  <div className="panel-head">
+                    <h2>Macros</h2>
+                    <div className="app-actions">
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          setMacroDraft(DEFAULT_MACRO)
+                          setMacroError(null)
+                        }}
+                      >
+                        New
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => sendRaw({ t: 'macroList' })}
+                      >
+                        Refresh
+                      </button>
+                      <button className="btn primary" onClick={saveMacro}>
+                        Save macro
+                      </button>
+                    </div>
+                  </div>
+                  {macroError && <p className="error small">{macroError}</p>}
+                  <div className="macro-editor">
+                    <textarea
+                      value={macroDraft}
+                      onChange={(event) => setMacroDraft(event.target.value)}
+                      spellCheck={false}
+                    />
+                  </div>
+                  <div className="macro-list">
+                    {macros.map((macro) => (
+                      <MacroRow
+                        key={macro.id}
+                        macro={macro}
+                        disabled={runDisabled}
+                        onRun={runMacro}
+                        onEdit={editMacro}
+                        onDelete={deleteMacro}
+                      />
+                    ))}
+                    {macros.length === 0 && <p className="empty">No macros yet.</p>}
+                  </div>
+                </section>
+              )}
+
+              {tab === 'recorder' && (
+                <RecorderPanel
+                  recording={recording}
+                  events={recordEvents}
+                  appLabel={appLabel}
+                  disabled={!selected.online || !!activeRun}
+                  onStart={startRecording}
+                  onStop={stopRecording}
+                  onClear={() => setRecordEvents([])}
+                />
+              )}
+
+              {tab === 'runs' && (
+                <RunsPanel
+                  runs={runs}
+                  selectedId={selectedRunId}
+                  onSelect={setSelectedRunId}
+                />
+              )}
             </>
           )}
 
@@ -492,6 +623,22 @@ export default function App() {
         </main>
       </div>
     </div>
+  )
+}
+
+function TabButton({
+  active,
+  onClick,
+  children
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button className={`tab ${active ? 'active' : ''}`} onClick={onClick}>
+      {children}
+    </button>
   )
 }
 
@@ -569,5 +716,408 @@ function elementLabel(element: Element) {
     element.desc?.trim() ||
     element.cls.split('.').pop() ||
     'element'
+  )
+}
+
+function SnapshotCard({
+  snapshot,
+  busy,
+  status,
+  onCaptureCurrent,
+  editing,
+  setEditing,
+  onTapElement,
+  onScrollElement,
+  onSendText
+}: {
+  snapshot: SnapshotMessage | null
+  busy: boolean
+  status: string | null
+  onCaptureCurrent: () => void
+  editing: { element: Element; text: string } | null
+  setEditing: (value: { element: Element; text: string } | null) => void
+  onTapElement: (element: Element) => void
+  onScrollElement: (element: Element, dir: 'up' | 'down') => void
+  onSendText: () => void
+}) {
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2>Snapshot</h2>
+        {snapshot && (
+          <span className="muted small">
+            {snapshot.pkg ?? '?'} · {snapshot.w}×{snapshot.h} ·{' '}
+            {snapshot.elements.length} hotspots · {snapshot.nodeCount} nodes ·{' '}
+            {snapshot.elapsedMs} ms
+          </span>
+        )}
+      </div>
+
+      {!snapshot && <p className="empty">Capture a screen to see hotspots.</p>}
+      {status && <p className="muted small">{status}</p>}
+      {snapshot?.error && <p className="error">Capture error: {snapshot.error}</p>}
+
+      {snapshot && !snapshot.error && (
+        <>
+          <div
+            className="snapshot"
+            style={{ aspectRatio: `${snapshot.w} / ${snapshot.h}` }}
+          >
+            <img
+              src={`data:image/webp;base64,${snapshot.image}`}
+              alt="Device screen"
+            />
+            {snapshot.elements.map((element) => (
+              <button
+                key={element.id}
+                className="hotspot"
+                title={elementLabel(element)}
+                style={{
+                  left: `${element.b[0] * 100}%`,
+                  top: `${element.b[1] * 100}%`,
+                  width: `${(element.b[2] - element.b[0]) * 100}%`,
+                  height: `${(element.b[3] - element.b[1]) * 100}%`
+                }}
+                onClick={() => onTapElement(element)}
+                disabled={busy}
+              >
+                <span>{element.i}</span>
+              </button>
+            ))}
+          </div>
+
+          {editing && (
+            <div className="edit-row">
+              <span className="muted small">Text for #{editing.element.i}</span>
+              <input
+                value={editing.text}
+                onChange={(event) =>
+                  setEditing({ ...editing, text: event.target.value })
+                }
+                placeholder="Type text…"
+                autoFocus
+              />
+              <button className="btn primary" onClick={onSendText} disabled={busy}>
+                Set text
+              </button>
+              <button className="btn" onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+            </div>
+          )}
+
+          <div className="elements">
+            {snapshot.elements.map((element) => (
+              <div className="element" key={element.id}>
+                <span className="index">#{element.i}</span>
+                <div className="element-main">
+                  <div>{elementLabel(element)}</div>
+                  <div className="muted small">
+                    {element.cls}
+                    {element.vid ? ` · ${element.vid}` : ''}
+                    {element.acts.length ? ` · ${element.acts.join(', ')}` : ''}
+                  </div>
+                </div>
+                <button
+                  className="btn small"
+                  onClick={() => onTapElement(element)}
+                  disabled={busy}
+                >
+                  Tap
+                </button>
+                {element.editable && (
+                  <button
+                    className="btn small"
+                    onClick={() => setEditing({ element, text: '' })}
+                    disabled={busy}
+                  >
+                    Type
+                  </button>
+                )}
+                {element.scrollable && (
+                  <>
+                    <button
+                      className="btn small"
+                      onClick={() => onScrollElement(element, 'up')}
+                      disabled={busy}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      className="btn small"
+                      onClick={() => onScrollElement(element, 'down')}
+                      disabled={busy}
+                    >
+                      ↓
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <button className="btn" onClick={onCaptureCurrent} disabled={busy}>
+            Capture current
+          </button>
+        </>
+      )}
+    </section>
+  )
+}
+
+function MacroRow({
+  macro,
+  disabled,
+  onRun,
+  onEdit,
+  onDelete
+}: {
+  macro: Macro
+  disabled: boolean
+  onRun: (macro: Macro, params: Record<string, string>) => void
+  onEdit: (macro: Macro) => void
+  onDelete: (macro: Macro) => void
+}) {
+  const keys = Object.keys(macro.params ?? {})
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {}
+    for (const key of keys) {
+      const value = macro.params?.[key]?.default
+      initial[key] = value == null ? '' : String(value)
+    }
+    return initial
+  })
+
+  return (
+    <div className="macro-row">
+      <div className="macro-main">
+        <div className="app-title">
+          {macro.name}
+          <span className="muted small">{macro.steps.length} steps</span>
+        </div>
+        <div className="muted small">
+          {macro.appPackage ?? 'any app'} · {macro.id}
+        </div>
+        {keys.length > 0 && (
+          <div className="params">
+            {keys.map((key) => (
+              <label key={key} className="param">
+                <span>{key}</span>
+                <input
+                  value={values[key] ?? ''}
+                  onChange={(event) =>
+                    setValues({ ...values, [key]: event.target.value })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="app-actions">
+        <button
+          className="btn primary small"
+          onClick={() => onRun(macro, values)}
+          disabled={disabled}
+        >
+          Run
+        </button>
+        <button className="btn small" onClick={() => onEdit(macro)}>
+          Edit
+        </button>
+        <button className="btn small" onClick={() => onDelete(macro)}>
+          Delete
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function RecorderPanel({
+  recording,
+  events,
+  appLabel,
+  disabled,
+  onStart,
+  onStop,
+  onClear
+}: {
+  recording: boolean
+  events: RecordEvent[]
+  appLabel: (pkg?: string | null) => string
+  disabled: boolean
+  onStart: () => void
+  onStop: () => void
+  onClear: () => void
+}) {
+  const lastText = events.find(
+    (event) => event.type === 'text' && !event.redacted && (event.text?.length ?? 0) > 0
+  )
+  const labelFor = (event: RecordEvent) =>
+    event.appLabel ??
+    (event.app?.includes('settings')
+      ? 'Settings'
+      : appLabel(event.app))
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2>Recorder</h2>
+        <div className="app-actions">
+          {!recording ? (
+            <button className="btn primary" onClick={onStart} disabled={disabled}>
+              Start recording
+            </button>
+          ) : (
+            <button className="btn" onClick={onStop}>
+              Stop recording
+            </button>
+          )}
+          <button className="btn" onClick={onClear}>
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div className="typed-card">
+        <div className="muted small">Last text entered</div>
+        {lastText ? (
+          <div className="typed-text">
+            <span className="typed-app">{labelFor(lastText)}</span>
+            <span>“{lastText.text}”</span>
+          </div>
+        ) : (
+          <div className="empty">
+            Start recording, then type in the target app on the device.
+          </div>
+        )}
+      </div>
+
+      <div className="record-events">
+        {events.map((event, index) => (
+          <div className={`record-event ${event.type}`} key={`${event.ts}-${index}`}>
+            <span className="record-time">{new Date(event.ts).toLocaleTimeString()}</span>
+            <span className="record-app">{labelFor(event)}</span>
+            <span className="record-type">{event.type}</span>
+            <span className="record-body">
+              {event.type === 'text' &&
+                (event.redacted
+                  ? '•••• (redacted)'
+                  : `${event.text ?? ''}${event.delta ? `  (+${event.delta})` : ''}`)}
+              {event.type === 'tap' && `tapped ${event.label ?? 'element'}`}
+              {event.type === 'scroll' && 'scrolled'}
+              {event.type === 'window' && `opened ${event.activity ?? 'window'}`}
+            </span>
+          </div>
+        ))}
+        {events.length === 0 && (
+          <p className="empty">
+            Text, taps, scrolls, and window changes will appear here while recording.
+          </p>
+        )}
+      </div>
+
+      <p className="muted small">
+        Text comes from accessibility text-change events, not raw hardware keycodes.
+        Password fields are redacted. App labels come from the device inventory.
+      </p>
+    </section>
+  )
+}
+
+function RunsPanel({
+  runs,
+  selectedId,
+  onSelect
+}: {
+  runs: RunRecord[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+}) {
+  const selected = runs.find((run) => run.id === selectedId) ?? runs[0]
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2>Runs</h2>
+        <span className="muted small">{runs.length}</span>
+      </div>
+
+      <div className="run-list">
+        {runs.map((run) => (
+          <button
+            key={run.id}
+            className={`run-row ${selected?.id === run.id ? 'selected' : ''}`}
+            onClick={() => onSelect(run.id)}
+          >
+            <RunStatusBadge status={run.status} />
+            <span className="run-name">{run.macroName}</span>
+            <span className="muted small">
+              {run.steps.length} steps · {new Date(run.startedAt).toLocaleTimeString()}
+            </span>
+          </button>
+        ))}
+        {runs.length === 0 && (
+          <p className="empty">No runs yet. Run a macro from the Macros tab.</p>
+        )}
+      </div>
+
+      {selected && <RunReport run={selected} />}
+    </section>
+  )
+}
+
+function RunStatusBadge({ status }: { status: RunRecord['status'] }) {
+  const className =
+    status === 'success'
+      ? 'controllable'
+      : status === 'failed'
+        ? 'blocked'
+        : 'partial'
+  return <span className={`verdict ${className}`}>{status}</span>
+}
+
+function RunReport({ run }: { run: RunRecord }) {
+  const duration = (run.finishedAt ?? Date.now()) - run.startedAt
+
+  return (
+    <div className="run-report">
+      <div className="panel-head">
+        <h3>{run.macroName}</h3>
+        <RunStatusBadge status={run.status} />
+      </div>
+      <p className="muted small">
+        {run.deviceId} · {(duration / 1000).toFixed(1)}s ·{' '}
+        {new Date(run.startedAt).toLocaleString()}
+      </p>
+
+      <div className="run-steps">
+        {run.steps.map((step) => (
+          <div className="run-step" key={step.i}>
+            <span className="index">#{step.i + 1}</span>
+            <div className="element-main">
+              <div>
+                {step.op} <span className={`step-status ${step.status}`}>{step.status}</span>
+              </div>
+              {step.error && <div className="error small">{step.error}</div>}
+              {step.snapshot?.image && (
+                <details>
+                  <summary className="muted small">
+                    checkpoint {step.snapshot.w}×{step.snapshot.h}
+                  </summary>
+                  <img
+                    className="checkpoint"
+                    src={`data:image/webp;base64,${step.snapshot.image}`}
+                    alt="checkpoint"
+                  />
+                </details>
+              )}
+            </div>
+            <span className="muted small">{step.ms ? `${step.ms} ms` : ''}</span>
+          </div>
+        ))}
+        {run.steps.length === 0 && <p className="empty">Waiting for steps…</p>}
+      </div>
+    </div>
   )
 }

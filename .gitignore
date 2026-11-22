@@ -33,3 +33,6 @@ coverage/
 # OS / editors
 Thumbs.db
 .vscode/
+
+# Runtime data
+server/data/

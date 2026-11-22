@@ -40,10 +40,28 @@ Environment:
 
 | Path | Purpose |
 |---|---|
-| `GET /api/health` | `{ok, devices, online, admins, uptime}` |
-| `GET /api/devices` | Device summaries (apps, state, probes) |
-| `WS /ws` | Device and admin socket |
-| `GET /` | Web panel (SPA) |
+| `GET /api/health` | status + counts |
+| `GET /api/devices` | device summaries (apps, state, probes) |
+| `GET /api/macros` | saved macros |
+| `GET /api/runs` | last 20 run reports |
+| `WS /ws` | device and admin socket |
+| `GET /` | web panel (SPA) |
+
+## Phase 2: macros, runs, recorder
+
+- Macros are stored in `server/data/macros.json`. A sample
+  `Settings — open Network & internet` macro is seeded on first start.
+- The admin sends `macroSave` / `macroDelete` / `macroList`; the server
+  broadcasts `macros` and `macroSaved`.
+- A `cmd` with `action: "runMacro"` gets a server-generated `runId`; the
+  server forwards the macro definition and params to the device, then relays
+  `runStarted`, `runStep`, and `runFinished` events.
+- Run steps include checkpoint snapshots (base64 WebP) and are kept in memory
+  for the last 20 runs.
+- Recorder commands (`startRecording` / `stopRecording`) make the agent stream
+  `recordEvent` messages: text changes, taps, scrolls, and window changes.
+  Text events include the app, current text, and the inserted delta; password
+  fields are redacted.
 
 ## Protocol
 

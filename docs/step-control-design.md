@@ -631,6 +631,11 @@ Even internal, this system can read OTPs and drive sensitive apps.
 > console) are scaffolded; the agent has a foreground relay service that sends
 > inventory/state/snapshots and accepts tap/text/scroll/back/probe commands.
 > Run instructions in `server/README.md` and `web/README.md`.
+>
+> **Phase 2 status:** macros (JSON editor + parameters), on-device macro engine
+> with `expect`/`assert`/`tapIfExists`, run reports with checkpoint screenshots,
+> and a live recorder (text/tap/scroll/window events, password redaction) are
+> implemented. Macros persist in `server/data/macros.json`.
 
 **Phase 0 exit criteria:** on two devices, list apps, launch one, capture a settled screenshot, and classify the six v1 apps as `controllable` / `partial` / `blocked`. If that works, the rest is engineering.
 
