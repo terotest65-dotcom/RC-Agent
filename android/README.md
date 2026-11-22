@@ -75,7 +75,8 @@ shows an **Enable accessibility** dialog if the service is off. Use **Open
 settings** to jump to the accessibility screen. The app first tries
 `android.settings.ACCESSIBILITY_DETAILS_SETTINGS` with the service component
 (works on many builds) and falls back to the standard accessibility page. On
-Poco/MIUI the service is listed under **Downloaded apps**; if the app was
+On most phones the service is under **Downloaded apps**, **Installed apps**,
+or **Installed services**; the label varies by manufacturer. If the app was
 sideloaded, allow restricted settings from **App info → ⋮** first.
 
 ## Wake and unlock

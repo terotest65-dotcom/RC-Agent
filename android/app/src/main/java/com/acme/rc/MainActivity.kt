@@ -441,11 +441,12 @@ class MainActivity : ComponentActivity() {
                         text = {
                             Text(
                                 "RC Agent needs accessibility to read the screen and " +
-                                    "perform taps.\n\nOn Poco: Settings → Accessibility → " +
-                                    "Downloaded apps → RC Agent. On Android 13+, if the app " +
-                                    "is sideloaded, first open App info → ⋮ → Allow " +
-                                    "restricted settings.\n\nThe button below opens the " +
-                                    "closest settings page your phone supports."
+                                    "perform taps.\n\nOpen Settings → Accessibility → " +
+                                    "Downloaded apps or Installed services (the exact label " +
+                                    "varies by phone) and select RC Agent. On Android 13+, " +
+                                    "if the app is sideloaded, first open App info → ⋮ → " +
+                                    "Allow restricted settings.\n\nThe button below opens " +
+                                    "the closest settings page your phone supports."
                             )
                         },
                         confirmButton = {
