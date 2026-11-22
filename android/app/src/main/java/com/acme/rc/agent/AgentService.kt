@@ -60,6 +60,7 @@ class AgentService : Service() {
         const val ACTION_STOP = "com.acme.rc.agent.STOP"
         private const val CHANNEL_ID = "rc_agent"
         private const val NOTIFICATION_ID = 41
+        private const val MASK_CHARS = "•●○◦∙·⋅▪▫■□◆◇‣⁃⦁⦿⊙◉*"
 
         @Volatile
         var instance: AgentService? = null
@@ -90,6 +91,8 @@ class AgentService : Service() {
     private var lastSnapshot: Snapshot? = null
 
     private val lastTexts = mutableMapOf<String, String>()
+    private val maskedTyped = mutableMapOf<String, String>()
+    private val maskedVisible = mutableMapOf<String, String>()
     private val cancelledRuns = mutableSetOf<String>()
     private val promptDeferred = mutableMapOf<String, CompletableDeferred<String>>()
     private val runVars = mutableMapOf<String, String>()
@@ -285,6 +288,8 @@ class AgentService : Service() {
             "startRecording" -> {
                 recording = true
                 lastTexts.clear()
+                maskedTyped.clear()
+                maskedVisible.clear()
                 sendRecordingState(true)
                 sendResult(cmdId, true)
                 return
@@ -809,22 +814,51 @@ class AgentService : Service() {
 
                 if (event.isPassword) {
                     payload.put("redacted", true)
+                    payload.put("masked", false)
                     payload.put("text", JSONObject.NULL)
                     payload.put("delta", JSONObject.NULL)
                     payload.put("before", JSONObject.NULL)
                 } else {
-                    val previous = lastTexts[key]
-                    val delta = when {
-                        previous == null -> current
-                        current.startsWith(previous) -> current.substring(previous.length)
-                        previous.startsWith(current) -> ""
-                        else -> current
+                    val masked = current.any { it in MASK_CHARS }
+                    if (masked) {
+                        val visible = current.filterNot { it in MASK_CHARS }
+                        val typedSoFar = maskedTyped[key] ?: ""
+                        val previousVisible = maskedVisible[key] ?: ""
+                        val appended = when {
+                            visible.isEmpty() -> ""
+                            typedSoFar.endsWith(visible) -> ""
+                            visible.startsWith(previousVisible) &&
+                                typedSoFar.endsWith(previousVisible) ->
+                                visible.substring(previousVisible.length)
+                            visible.length == 1 -> visible
+                            else -> visible
+                        }
+                        val next = typedSoFar + appended
+                        maskedVisible[key] = visible
+                        maskedTyped[key] = next
+                        lastTexts[key] = next
+                        payload.put("text", next)
+                        payload.put("delta", appended)
+                        payload.put("before", typedSoFar)
+                        payload.put("masked", true)
+                        payload.put("redacted", false)
+                    } else {
+                        val previous = lastTexts[key]
+                        val delta = when {
+                            previous == null -> current
+                            current.startsWith(previous) -> current.substring(previous.length)
+                            previous.startsWith(current) -> ""
+                            else -> current
+                        }
+                        lastTexts[key] = current
+                        maskedTyped[key] = current
+                        maskedVisible[key] = current
+                        payload.put("text", current)
+                        payload.put("delta", delta)
+                        payload.put("before", previous ?: JSONObject.NULL)
+                        payload.put("masked", false)
+                        payload.put("redacted", false)
                     }
-                    lastTexts[key] = current
-                    payload.put("text", current)
-                    payload.put("delta", delta)
-                    payload.put("before", previous ?: JSONObject.NULL)
-                    payload.put("redacted", false)
                 }
             }
             "tap" -> {

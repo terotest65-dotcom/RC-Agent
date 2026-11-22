@@ -39,6 +39,61 @@ function nowLabel() {
   return new Date().toLocaleTimeString()
 }
 
+const HAS_MASK = /[•●○◦∙·⋅▪▫■□◆◇‣⁃⦁⦿⊙◉*]/
+const STRIP_MASK = /[•●○◦∙·⋅▪▫■□◆◇‣⁃⦁⦿⊙◉*]/g
+
+/**
+ * Masked fields often report "1", "•2", "••3", "•••4". Strip the mask
+ * characters and accumulate the visible characters so each step reads as
+ * "1", "12", "123", "1234". Already-cleaned events pass through unchanged.
+ */
+function normalizeRecordEvents(events: RecordEvent[]): RecordEvent[] {
+  const chronological = [...events].reverse()
+  const typed = new Map<string, string>()
+  const visible = new Map<string, string>()
+  const normalized: RecordEvent[] = []
+
+  for (const event of chronological) {
+    if (event.type !== 'text' || event.redacted) {
+      normalized.push(event)
+      continue
+    }
+
+    const key = `${event.app ?? ''}:${event.viewId ?? event.className ?? ''}`
+    const raw = event.text ?? ''
+
+    if (HAS_MASK.test(raw)) {
+      const clean = raw.replace(STRIP_MASK, '')
+      const typedSoFar = typed.get(key) ?? ''
+      const previousVisible = visible.get(key) ?? ''
+      const appended =
+        clean === ''
+          ? ''
+          : typedSoFar.endsWith(clean)
+            ? ''
+            : clean.startsWith(previousVisible)
+              ? clean.slice(previousVisible.length)
+              : clean
+      const next = typedSoFar + appended
+      visible.set(key, clean)
+      typed.set(key, next)
+      normalized.push({
+        ...event,
+        text: next,
+        delta: appended,
+        before: typedSoFar,
+        masked: true
+      })
+    } else {
+      typed.set(key, raw)
+      visible.set(key, raw)
+      normalized.push({ ...event, masked: event.masked ?? false })
+    }
+  }
+
+  return normalized.reverse()
+}
+
 export default function App() {
   const [connected, setConnected] = useState(false)
   const [devices, setDevices] = useState<DeviceSummary[]>([])
@@ -397,7 +452,7 @@ export default function App() {
   }
 
   const draftMacro = () => {
-    const chronological = [...recordEvents]
+    const chronological = [...normalizeRecordEvents(recordEvents)]
       .reverse()
       .filter((event) => event.app !== 'com.acme.rc')
     const steps: any[] = []
@@ -428,15 +483,21 @@ export default function App() {
           ? { viewId: event.viewId }
           : event.className
             ? { className: event.className }
-            : null
-        if (!selector) continue
+            : { className: 'android.widget.EditText' }
         const key = event.viewId ?? event.className ?? 'field'
         const index = textStepByField.get(key)
         if (index !== undefined) {
           steps[index].text = event.text ?? ''
+          if (event.masked) steps[index].secret = true
         } else {
           const newIndex = steps.length
-          steps.push({ op: 'setText', selector, text: event.text ?? '' })
+          const step: any = {
+            op: 'setText',
+            selector,
+            text: event.text ?? ''
+          }
+          if (event.masked) step.secret = true
+          steps.push(step)
           textStepByField.set(key, newIndex)
         }
       }
@@ -1124,7 +1185,8 @@ function RecorderPanel({
   onDraft: () => void
 }) {
   const [textOnly, setTextOnly] = useState(false)
-  const lastText = events.find(
+  const normalized = normalizeRecordEvents(events)
+  const lastText = normalized.find(
     (event) => event.type === 'text' && !event.redacted && (event.text?.length ?? 0) > 0
   )
   const labelFor = (event: RecordEvent) =>
@@ -1134,8 +1196,8 @@ function RecorderPanel({
       : appLabel(event.app))
 
   const visibleEvents = textOnly
-    ? events.filter((event) => event.type === 'text')
-    : events
+    ? normalized.filter((event) => event.type === 'text')
+    : normalized
 
   return (
     <section className="panel">
@@ -1209,7 +1271,7 @@ function RecorderPanel({
       <p className="muted small">
         {textOnly
           ? 'Showing text events only. Toggle off to see taps, scrolls, and window changes.'
-          : 'Text comes from accessibility text-change events, not raw hardware keycodes. Password fields are redacted. App labels come from the device inventory.'}
+          : 'Text comes from accessibility text-change events. Masked bullet fields are cleaned and concatenated; OS-marked password fields are redacted.'}
       </p>
     </section>
   )

@@ -237,6 +237,7 @@ export interface RecordEvent {
   before?: string | null
   label?: string | null
   redacted?: boolean
+  masked?: boolean
 }
 
 export interface MacrosMessage {
