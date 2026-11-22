@@ -85,7 +85,8 @@ right-side activity drawer:
   Unlock dismisses a swipe/no-security keyguard; a PIN/pattern/password still
   requires the person to enter it, unless the device is provisioned with no
   secure lock and Device Owner.
-- **Phone** — SIM details and numbers, inbox messages, direct SMS sending, and
+- **Phone** — SIM details and numbers, inbox messages with a compact **Money**
+  band for the latest debit/credit/balance SMS, direct SMS sending, and
   carrier-USSD call forwarding (all calls, no answer, busy, unreachable, or a
   raw code). Requires the phone/SMS permissions on the agent.
 - **Macros** — JSON macro editor, parameters, save/delete, run.

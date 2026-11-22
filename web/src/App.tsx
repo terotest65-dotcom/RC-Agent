@@ -1747,6 +1747,7 @@ function PhonePanel({
 }) {
   const sims = telephony?.sims ?? []
   const permissions = telephony?.permissions
+  const money = useMemo(() => extractMoney(messages), [messages])
   const [smsTo, setSmsTo] = useState('')
   const [smsBody, setSmsBody] = useState('')
   const [smsSubId, setSmsSubId] = useState('')
@@ -1970,6 +1971,8 @@ function PhonePanel({
           <NoticeBar notice={notice} onDismiss={onDismissNotice} />
         )}
 
+        <MoneySummary entries={money} />
+
         <div className="sms-layout">
           <div className="sms-list">
             {loading && <p className="empty">Reading the inbox…</p>}
@@ -2062,6 +2065,162 @@ function PhonePanel({
         </div>
       </section>
 
+    </div>
+  )
+}
+
+type MoneyKind = 'debit' | 'credit' | 'balance'
+
+interface MoneyEntry {
+  key: string
+  kind: MoneyKind
+  amount: number
+  balance: number | null
+  source: string
+  account: string | null
+  date: number
+  address: string
+}
+
+const MONEY_WORDS =
+  /(bank|a\/c|account|card|upi|vpa|wallet|txn|transaction|balance|debit|credit|paid|payment|received|spent|withdrawn|deposited|refund|cashback)/i
+
+function extractMoney(messages: SmsRecord[]): MoneyEntry[] {
+  const entries: MoneyEntry[] = []
+
+  for (const message of messages) {
+    const body = message.body || ''
+    if (!body || !MONEY_WORDS.test(body)) continue
+    const amounts = [...body.matchAll(/(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d{1,2})?)/gi)]
+      .map((match) => Number((match[1] ?? '').replace(/,/g, '')))
+      .filter((amount) => Number.isFinite(amount) && amount > 0)
+    if (amounts.length === 0) continue
+
+    const balanceMatch = body.match(
+      /(?:available\s+balance|avl\.?\s*bal(?:ance)?|balance|bal)[^0-9₹]{0,18}(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d{1,2})?)/i
+    )
+    const rawBalance = balanceMatch?.[1]?.replace(/,/g, '')
+    const parsedBalance = rawBalance ? Number(rawBalance) : null
+    const balance =
+      parsedBalance !== null && Number.isFinite(parsedBalance) ? parsedBalance : null
+
+    let kind: MoneyKind = 'balance'
+    if (/\bcredited\b|\breceived\b|\bdeposit(?:ed)?\b|\brefund\b|\breversed\b|\bcashback\b|\bcredit\s+(?:of|with|to)\b/i.test(body)) {
+      kind = 'credit'
+    } else if (/\bdebit(?:ed)?\b|\bwithdrawn?\b|\bspent\b|\bpaid\b|\bpurchase\b|\bsent\b|\btransferred to\b/i.test(body)) {
+      kind = 'debit'
+    } else if (balance === null) {
+      continue
+    }
+
+    let amount = amounts[0]
+    if (kind === 'balance' && balance !== null) {
+      amount = balance
+    } else if (balance !== null && amount === balance && amounts.length > 1) {
+      amount = amounts.find((candidate) => candidate !== balance) ?? amount
+    }
+
+    entries.push({
+      key: message.id,
+      kind,
+      amount,
+      balance,
+      source: moneySource(message.address),
+      account: moneyAccount(body),
+      date: message.date,
+      address: message.address
+    })
+  }
+
+  return entries
+}
+
+function moneySource(address: string) {
+  const value = (address || '').toUpperCase()
+  const sources: Array<[RegExp, string]> = [
+    [/SBI|SBIN/, 'SBI'],
+    [/HDFC/, 'HDFC'],
+    [/ICICI/, 'ICICI'],
+    [/AXIS/, 'Axis'],
+    [/KOTAK/, 'Kotak'],
+    [/PNB/, 'PNB'],
+    [/BOB|BARODA/, 'Bank of Baroda'],
+    [/IDFC/, 'IDFC'],
+    [/AIRTEL/, 'Airtel'],
+    [/PAYTM/, 'Paytm'],
+    [/PHONEPE/, 'PhonePe'],
+    [/GPAY|GOOGLE/, 'GPay'],
+    [/AMEX/, 'Amex'],
+    [/CRED/, 'CRED']
+  ]
+  for (const [pattern, label] of sources) {
+    if (pattern.test(value)) return label
+  }
+  return address || 'Bank'
+}
+
+function moneyAccount(body: string) {
+  const match = body.match(
+    /(?:a\/c|acct|account)\s*(?:no\.?)?\s*(?:xx|x+|\*+)?\s*(\d{3,4})\b/i
+  )
+  return match ? `A/c ••${match[1]}` : null
+}
+
+function formatINR(value: number) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value)
+}
+
+function MoneySummary({ entries }: { entries: MoneyEntry[] }) {
+  const latestBalance = entries.find((entry) => entry.balance !== null)
+  const recent = entries.slice(0, 4)
+
+  return (
+    <div className="money-summary">
+      <div className="money-summary-head">
+        <div className="money-title">
+          <h3>Money</h3>
+          <span>
+            {entries.length
+              ? `${entries.length} bank message${entries.length === 1 ? '' : 's'}`
+              : 'No bank messages in the latest inbox'}
+          </span>
+        </div>
+        {latestBalance?.balance != null && (
+          <div className="money-balance">
+            <span>Latest balance</span>
+            <strong>{formatINR(latestBalance.balance)}</strong>
+            <small>
+              {latestBalance.source}
+              {latestBalance.account ? ` · ${latestBalance.account}` : ''}
+            </small>
+          </div>
+        )}
+      </div>
+
+      {recent.length > 0 ? (
+        <div className="money-rows">
+          {recent.map((entry) => (
+            <div className={`money-row ${entry.kind}`} key={entry.key}>
+              <span className={`money-kind ${entry.kind}`}>{entry.kind}</span>
+              <strong>{formatINR(entry.amount)}</strong>
+              <span className="money-source">
+                {entry.source}
+                {entry.account ? ` · ${entry.account}` : ''}
+              </span>
+              <span className="money-time">{formatSmsTime(entry.date)}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="money-empty">
+          Debits, credits, and balances from the latest SMS will appear here.
+        </p>
+      )}
     </div>
   )
 }

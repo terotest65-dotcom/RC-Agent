@@ -2254,6 +2254,126 @@ select:focus {
   background: var(--danger);
 }
 
+.money-summary {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-2);
+}
+
+.money-summary-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.money-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.money-title h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.money-title span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.money-balance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+
+.money-balance > span {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.money-balance strong {
+  color: var(--success-text);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.money-balance small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.money-rows {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.money-row {
+  display: grid;
+  grid-template-columns: 62px 120px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.money-row:last-child {
+  border-bottom: 0;
+}
+
+.money-kind {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.money-kind.debit {
+  color: var(--danger-text);
+}
+
+.money-kind.credit {
+  color: var(--success-text);
+}
+
+.money-kind.balance {
+  color: var(--primary);
+}
+
+.money-row strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.money-source {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.money-time {
+  color: var(--muted-2);
+  font-size: 11.5px;
+  text-align: right;
+}
+
+.money-empty {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
 .sms-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -2837,6 +2957,42 @@ select:focus {
   .perm-strip {
     gap: 8px 12px;
     padding: 12px 14px;
+  }
+
+  .money-summary {
+    padding: 12px 14px;
+  }
+
+  .money-summary-head {
+    align-items: flex-start;
+  }
+
+  .money-balance {
+    align-items: flex-start;
+  }
+
+  .money-row {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+  }
+
+  .money-kind {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .money-row strong {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .money-time {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .money-source {
+    grid-column: 2 / 4;
+    grid-row: 2;
   }
 
   .sms-row summary {

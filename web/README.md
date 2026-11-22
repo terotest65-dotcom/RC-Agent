@@ -70,7 +70,10 @@ device title. There is no separate login; the profile is informational.
   shown next to the form; exact behavior is carrier-dependent.
 - **Messages** — inbox ledger with expandable bodies and SIM slot. The agent
   pushes an updated inbox when a new SMS arrives, so the list, send composer,
-  and count update without a manual refresh.
+  and count update without a manual refresh. A compact **Money** band above
+  the list parses the latest bank/payment SMS into Debit, Credit, and Balance
+  entries with source, account last-4, time, and the latest known balance.
+  Parsing is heuristic and read-only.
 - **Send SMS** — pick a line, enter a recipient and body, send directly from
   the device. Results appear next to the form.
 

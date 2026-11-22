@@ -105,7 +105,8 @@ The agent exposes phone capabilities to the admin **Phone** tab:
   the number to the SIM; many SIMs return nothing.
 - **Messages** — the 50 newest inbox messages (`READ_SMS`), address, body,
   timestamp, and SIM slot. The SMS receiver triggers an inbox refresh when a
-  new message arrives, so the admin Phone tab updates automatically.
+  new message arrives, so the admin Phone tab updates automatically. The
+  admin also parses recent bank/payment SMS into a small Money summary.
 - **Send SMS** — direct `SmsManager.sendMultipartTextMessage` on the selected
   subscription (`SEND_SMS`). Results are queued, not delivery-confirmed.
 - **Call forwarding** — carrier USSD through `TelephonyManager.sendUssdRequest`
