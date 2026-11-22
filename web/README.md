@@ -32,8 +32,8 @@ tailnet.
 Field console: a warm paper, ink and vermilion interface with a device rail
 on the left and an editorial workspace on the right. The header carries the
 device name in a serif display face, a telemetry strip replaces status pills,
-and tabs are numbered **Control**, **Macros**, **Recorder**, **Runs**, and
-**Secrets**. The event log opens as a bottom **Activity** drawer. Layout
+and tabs are numbered **Control**, **Phone**, **Macros**, **Recorder**, **Runs**,
+and **Secrets**. The event log opens as a bottom **Activity** drawer. Layout
 collapses to a single column on narrow screens; device cards scroll
 horizontally and tabs/telemetry fade at the edge. Fonts are self-hosted
 (Instrument Sans, Instrument Serif, IBM Plex Mono).
@@ -49,6 +49,20 @@ horizontally and tabs/telemetry fade at the edge. Fonts are self-hosted
 - device state chips (accessibility, screen, battery, Device Owner)
 - capability probing still exists in the agent and relay, but the panel no
   longer exposes a probe tab.
+
+## Phone surface
+
+- **Lines** — SIM cards with number, carrier, slot, country/MCC-MNC, state,
+  signal, data, roaming, and masked ICCID. Agent permission states are shown
+  inline.
+- **Messages** — inbox ledger with expandable bodies and SIM slot; **Refresh**
+  re-reads the device.
+- **Send SMS** — pick a line, enter a recipient and body, send directly from
+  the device. Results appear next to the form.
+- **Call forwarding** — pick a line and rule (all calls, no answer, busy,
+  unreachable), enter the destination, then Enable / Disable / Status. A raw
+  USSD field is available for carrier-specific codes. The network response is
+  shown next to the form; exact behavior is carrier-dependent.
 
 ## Phase 2 surface
 

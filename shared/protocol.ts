@@ -36,6 +36,48 @@ export interface DeviceState {
   package?: string | null
 }
 
+export interface SimPermissions {
+  readSms: boolean
+  sendSms: boolean
+  readPhoneState: boolean
+  readPhoneNumbers: boolean
+  callPhone: boolean
+}
+
+export interface SimInfo {
+  subId: number
+  slotIndex: number
+  carrierName?: string | null
+  displayName?: string | null
+  number?: string | null
+  countryIso?: string | null
+  mcc?: string | null
+  mnc?: string | null
+  simState?: string | null
+  roaming?: boolean
+  dataEnabled?: boolean
+  serial?: string | null
+  signalLevel?: number | null
+  signalDbm?: number | null
+}
+
+export interface TelephonyInfo {
+  sims: SimInfo[]
+  permissions: SimPermissions
+  error?: string | null
+}
+
+export interface SmsRecord {
+  id: string
+  address: string
+  body: string
+  date: number
+  read: boolean
+  type: number
+  subId?: number | null
+  slotIndex?: number | null
+}
+
 export interface Element {
   i: number
   id: string
@@ -96,6 +138,7 @@ export interface DeviceSummary {
   apps?: AppInfo[]
   state?: DeviceState
   probes?: Record<string, ProbeResult>
+  telephony?: TelephonyInfo
 }
 
 export interface DevicesMessage {
@@ -126,6 +169,7 @@ export interface ActionResultMessage {
   cmdId: string
   ok: boolean
   error?: string
+  detail?: string | null
 }
 
 export interface ProbeMessage {
@@ -310,6 +354,36 @@ export interface SecretSavedMessage {
   secret: SecretInfo
 }
 
+export interface TelephonyMessage extends TelephonyInfo {
+  t: 'telephony'
+  deviceId: string
+}
+
+export interface SmsListMessage {
+  t: 'smsList'
+  deviceId: string
+  messages: SmsRecord[]
+  error?: string | null
+}
+
+export interface SmsSendResultMessage {
+  t: 'smsSendResult'
+  deviceId: string
+  ok: boolean
+  to: string
+  detail?: string | null
+  error?: string | null
+}
+
+export interface UssdResultMessage {
+  t: 'ussdResult'
+  deviceId: string
+  ok: boolean
+  code: string
+  response?: string | null
+  error?: string | null
+}
+
 export type ServerMessage =
   | DevicesMessage
   | DeviceMessage
@@ -331,10 +405,18 @@ export type ServerMessage =
   | PromptMessage
   | SecretsMessage
   | SecretSavedMessage
+  | TelephonyMessage
+  | SmsListMessage
+  | SmsSendResultMessage
+  | UssdResultMessage
 
 export type ActionName =
   | 'listApps'
   | 'snapshot'
+  | 'telephonyInfo'
+  | 'smsList'
+  | 'smsSend'
+  | 'callForward'
   | 'launch'
   | 'tap'
   | 'tapXY'

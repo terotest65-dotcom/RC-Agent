@@ -33,7 +33,9 @@ adb shell am start -n com.acme.rc/.MainActivity
    - On Android 13+, a sideloaded APK may show **Restricted setting**. Open
      **App info → ⋮ → Allow restricted settings**, then enable Accessibility.
 2. Optional: **Settings → Notification access → RC Agent OTP reader**.
-3. Optional: keep the device unlocked and charging. For a headless fleet,
+3. Grant SMS and phone permissions when prompted: read/send SMS, phone state,
+   phone numbers, and calls. These enable the admin **Phone** tab.
+4. Optional: keep the device unlocked and charging. For a headless fleet,
    provision Device Owner and call `setKeyguardDisabled`.
 
 ### Enable via ADB (development only)
@@ -42,6 +44,11 @@ adb shell am start -n com.acme.rc/.MainActivity
 adb shell settings put secure enabled_accessibility_services \
   com.acme.rc/com.acme.rc.accessibility.RcAccessibilityService
 adb shell settings put secure accessibility_enabled 1
+
+# Telephony permissions (the runtime dialog may be hidden for sideloaded apps)
+for p in READ_SMS SEND_SMS READ_PHONE_STATE READ_PHONE_NUMBERS CALL_PHONE; do
+  adb shell pm grant com.acme.rc android.permission.$p
+done
 ```
 
 ### Device Owner (optional)
@@ -54,6 +61,31 @@ adb shell dpm set-device-owner com.acme.rc/.admin.RcDeviceAdminReceiver
 
 Without Device Owner the app still works; it only loses the automatic
 keyguard disable and keep-awake helpers.
+
+## Telephony: SIM, SMS, call forwarding
+
+The agent exposes phone capabilities to the admin **Phone** tab:
+
+- **Lines** — active subscriptions with carrier, slot, phone number, country,
+  MCC/MNC, SIM state, signal (dBm/level), data state, roaming, and a masked
+  ICCID. Numbers depend on `READ_PHONE_NUMBERS` and whether the carrier wrote
+  the number to the SIM; many SIMs return nothing.
+- **Messages** — the 50 newest inbox messages (`READ_SMS`), address, body,
+  timestamp, and SIM slot.
+- **Send SMS** — direct `SmsManager.sendMultipartTextMessage` on the selected
+  subscription (`SEND_SMS`). Results are queued, not delivery-confirmed.
+- **Call forwarding** — carrier USSD through `TelephonyManager.sendUssdRequest`
+  (`CALL_PHONE`), with presets for all calls, no answer, busy, and unreachable,
+  plus a raw USSD field. The carrier decides whether the code is accepted and
+  what it returns. Some carriers show a confirmation dialog on the device.
+  Codes follow the standard GSM MMI scheme (`*21*<number>#`, `#21#`,
+  `*#21#`, and the 61/62/67 variants). The agent times out after 20 seconds.
+  No hidden `MODIFY_PHONE_STATE` APIs are used.
+
+Everything is best-effort: the admin shows each permission state, and missing
+permissions produce a readable error instead of a silent failure. The emulator
+may report a fake T-Mobile line; sending an SMS to that same number loops the
+message back into the inbox.
 
 ## What Phase 0 does
 
@@ -75,7 +107,8 @@ keyguard disable and keep-awake helpers.
 - Replay taps use the current app layout; if the app opens on a different screen,
   the coordinate may miss. The real controller taps while the target app is
   already foreground.
-- No networking yet: this is a local debug console, not the remote control plane.
+- Network control now lives in the relay; the local console remains useful for
+  onboarding and firmware checks.
 - The app UI and the target app cannot both be foreground on the same device;
   the real tap path runs from the backend while the target app is foreground.
 

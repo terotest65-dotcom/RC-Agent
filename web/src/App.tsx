@@ -10,7 +10,10 @@ import type {
   RunRecord,
   SecretInfo,
   ServerMessage,
-  SnapshotMessage
+  SimInfo,
+  SmsRecord,
+  SnapshotMessage,
+  TelephonyInfo
 } from '../../shared/protocol'
 
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
@@ -25,7 +28,7 @@ const DEFAULT_MACRO = `{
   ]
 }`
 
-type Tab = 'control' | 'macros' | 'recorder' | 'runs' | 'secrets'
+type Tab = 'control' | 'phone' | 'macros' | 'recorder' | 'runs' | 'secrets'
 
 interface ActiveSession {
   id: string
@@ -123,6 +126,15 @@ export default function App() {
   const [appQuery, setAppQuery] = useState('')
   const [macroEditorOpen, setMacroEditorOpen] = useState(false)
   const [clock, setClock] = useState(() => new Date())
+  const [smsMessages, setSmsMessages] = useState<SmsRecord[]>([])
+  const [smsLoading, setSmsLoading] = useState(false)
+  const [smsPending, setSmsPending] = useState(false)
+  const [forwardPending, setForwardPending] = useState(false)
+  const [phoneNotice, setPhoneNotice] = useState<{
+    ok: boolean
+    text: string
+    scope: 'sms' | 'forward' | 'list'
+  } | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const selectedRef = useRef<string | null>(null)
@@ -173,6 +185,36 @@ export default function App() {
     [appendLog, sendRaw]
   )
 
+  const loadPhone = useCallback(
+    (deviceId: string) => {
+      setSmsLoading(true)
+      setPhoneNotice(null)
+      sendCmd(deviceId, 'telephonyInfo', {}, false)
+      sendCmd(deviceId, 'smsList', { limit: 50 }, false)
+    },
+    [sendCmd]
+  )
+
+  const sendSmsNow = useCallback(
+    (to: string, body: string, subId: number) => {
+      if (!selectedId) return
+      setSmsPending(true)
+      setPhoneNotice(null)
+      sendCmd(selectedId, 'smsSend', { to, body, subId }, false)
+    },
+    [selectedId, sendCmd]
+  )
+
+  const forwardNow = useCallback(
+    (code: string, subId: number) => {
+      if (!selectedId) return
+      setForwardPending(true)
+      setPhoneNotice(null)
+      sendCmd(selectedId, 'callForward', { code, subId }, false)
+    },
+    [selectedId, sendCmd]
+  )
+
   const handleMessage = useCallback(
     (msg: ServerMessage) => {
       switch (msg.t) {
@@ -203,6 +245,67 @@ export default function App() {
             prev.map((d) => (d.id === msg.deviceId ? { ...d, state: msg.state } : d))
           )
           break
+        case 'telephony':
+          setDevices((prev) =>
+            prev.map((d) =>
+              d.id === msg.deviceId
+                ? {
+                    ...d,
+                    telephony: {
+                      sims: msg.sims,
+                      permissions: msg.permissions,
+                      error: msg.error ?? null
+                    }
+                  }
+                : d
+            )
+          )
+          break
+        case 'smsList':
+          if (msg.deviceId !== selectedRef.current) {
+            setSmsLoading(false)
+            break
+          }
+          setSmsMessages(msg.messages)
+          setSmsLoading(false)
+          if (msg.error) {
+            setPhoneNotice({ ok: false, text: msg.error, scope: 'list' })
+          }
+          break
+        case 'smsSendResult':
+          setSmsPending(false)
+          if (msg.deviceId === selectedRef.current) {
+            setPhoneNotice({
+              ok: msg.ok,
+              text: msg.ok
+                ? msg.detail ?? `SMS queued to ${msg.to}`
+                : msg.error ?? 'SMS failed',
+              scope: 'sms'
+            })
+          }
+          appendLog(
+            `sms ${msg.ok ? 'ok' : 'error'} · ${msg.to}${
+              msg.detail ? ` · ${msg.detail}` : ''
+            }${msg.error ? ` · ${msg.error}` : ''}`
+          )
+          break
+        case 'ussdResult':
+          setForwardPending(false)
+          if (msg.deviceId === selectedRef.current) {
+            setPhoneNotice({
+              ok: msg.ok,
+              text: msg.ok
+                ? msg.response ?? 'USSD accepted'
+                : msg.error ?? 'USSD failed',
+              scope: 'forward'
+            })
+          }
+          appendLog(
+            `ussd ${msg.ok ? 'ok' : 'error'} · ${msg.code}${
+              msg.response ? ` · ${msg.response}` : ''
+            }${msg.error ? ` · ${msg.error}` : ''}`
+          )
+          break
         case 'snapshot':
           if (msg.deviceId !== selectedRef.current) break
           setSnapshot(msg)
@@ -216,7 +319,9 @@ export default function App() {
         case 'actionResult':
           setBusy(false)
           appendLog(
-            `${msg.ok ? 'ok' : 'error'} ${msg.cmdId}${msg.error ? ` · ${msg.error}` : ''}`
+            `${msg.ok ? 'ok' : 'error'} ${msg.cmdId}${msg.error ? ` · ${msg.error}` : ''}${
+              msg.detail ? ` · ${msg.detail}` : ''
+            }`
           )
           break
         case 'error':
@@ -355,6 +460,11 @@ export default function App() {
     setRecordEvents([])
     setRecording(false)
     setActiveSession(null)
+    setSmsMessages([])
+    setSmsLoading(false)
+    setSmsPending(false)
+    setForwardPending(false)
+    setPhoneNotice(null)
     const device = devices.find((d) => d.id === selectedId)
     if (device?.online) {
       sendCmd(selectedId, 'snapshot', {}, false)
@@ -363,6 +473,13 @@ export default function App() {
     // Selected device changes should not re-run when the device list updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId])
+
+  useEffect(() => {
+    if (tab !== 'phone' || !selectedId) return
+    loadPhone(selectedId)
+    // Reload only when the tab or device changes, not on every device update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, selectedId])
 
   const selected = devices.find((d) => d.id === selectedId) ?? null
   const apps = selected?.apps ?? []
@@ -589,6 +706,7 @@ export default function App() {
 
   const tabNotes: Record<Tab, string | number | null> = {
     control: null,
+    phone: selected?.telephony?.sims.length ?? 0,
     macros: macros.length,
     recorder: recordEvents.length,
     runs: runs.length,
@@ -748,6 +866,7 @@ export default function App() {
                 {(
                   [
                     ['control', 'Control'],
+                    ['phone', 'Phone'],
                     ['macros', 'Macros'],
                     ['recorder', 'Recorder'],
                     ['runs', 'Runs'],
@@ -866,6 +985,22 @@ export default function App() {
                       </section>
                     </aside>
                   </div>
+                )}
+
+                {tab === 'phone' && (
+                  <PhonePanel
+                    key={selected.id}
+                    telephony={selected.telephony ?? null}
+                    messages={smsMessages}
+                    loading={smsLoading}
+                    smsPending={smsPending}
+                    forwardPending={forwardPending}
+                    notice={phoneNotice}
+                    onDismissNotice={() => setPhoneNotice(null)}
+                    onRefresh={() => loadPhone(selected.id)}
+                    onSendSms={sendSmsNow}
+                    onCallForward={forwardNow}
+                  />
                 )}
 
                 {tab === 'macros' && (
@@ -1326,6 +1461,419 @@ function SnapshotCard({
       )}
     </section>
   )
+}
+
+type ForwardMode = 'all' | 'noAnswer' | 'busy' | 'unreachable'
+
+const FORWARD_MODES: Record<
+  ForwardMode,
+  { label: string; enable: string; disable: string; status: string }
+> = {
+  all: { label: 'All calls', enable: '*21*', disable: '#21#', status: '*#21#' },
+  noAnswer: { label: 'No answer', enable: '*61*', disable: '#61#', status: '*#61#' },
+  busy: { label: 'Busy', enable: '*67*', disable: '#67#', status: '*#67#' },
+  unreachable: {
+    label: 'Unreachable',
+    enable: '*62*',
+    disable: '#62#',
+    status: '*#62#'
+  }
+}
+
+function PhonePanel({
+  telephony,
+  messages,
+  loading,
+  smsPending,
+  forwardPending,
+  notice,
+  onDismissNotice,
+  onRefresh,
+  onSendSms,
+  onCallForward
+}: {
+  telephony: TelephonyInfo | null
+  messages: SmsRecord[]
+  loading: boolean
+  smsPending: boolean
+  forwardPending: boolean
+  notice: { ok: boolean; text: string; scope: 'sms' | 'forward' | 'list' } | null
+  onDismissNotice: () => void
+  onRefresh: () => void
+  onSendSms: (to: string, body: string, subId: number) => void
+  onCallForward: (code: string, subId: number) => void
+}) {
+  const sims = telephony?.sims ?? []
+  const permissions = telephony?.permissions
+  const [smsTo, setSmsTo] = useState('')
+  const [smsBody, setSmsBody] = useState('')
+  const [smsSubId, setSmsSubId] = useState('')
+  const [forwardMode, setForwardMode] = useState<ForwardMode>('all')
+  const [forwardNumber, setForwardNumber] = useState('')
+  const [forwardSubId, setForwardSubId] = useState('')
+  const [rawCode, setRawCode] = useState('')
+
+  const simIds = new Set(sims.map((sim) => String(sim.subId)))
+  const lineValue = (value: string) =>
+    value && simIds.has(value) ? value : sims[0] ? String(sims[0].subId) : ''
+  const activeSmsSub = Number(lineValue(smsSubId)) || -1
+  const activeForwardSub = Number(lineValue(forwardSubId)) || -1
+  const cleanNumber = forwardNumber.replace(/[^\d+]/g, '')
+  const preset = FORWARD_MODES[forwardMode]
+  const enableCode = cleanNumber ? `${preset.enable}${cleanNumber}#` : ''
+  const canSend = Boolean(smsTo.trim() && smsBody.trim() && sims.length && !smsPending)
+  const sendPreset = (action: 'enable' | 'disable' | 'status') => {
+    const code =
+      action === 'enable'
+        ? enableCode
+        : action === 'disable'
+          ? preset.disable
+          : preset.status
+    if (code) onCallForward(code, activeForwardSub)
+  }
+
+  return (
+    <div className="phone-layout">
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2>Lines</h2>
+            <span className="panel-sub">
+              {sims.length} SIM{sims.length === 1 ? '' : 's'} ·{' '}
+              {telephony ? 'live read' : 'waiting for device'}
+            </span>
+          </div>
+          <div className="panel-actions">
+            <button className="btn btn-ghost btn-small" onClick={onRefresh}>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {sims.length > 0 ? (
+          <div className="sim-list">
+            {sims.map((sim) => (
+              <div className="sim-row" key={sim.subId}>
+                <span className="sim-slot">
+                  SIM {sim.slotIndex + 1}
+                </span>
+                <span className="sim-number">
+                  {sim.number?.trim() || 'Number not provisioned'}
+                </span>
+                <span className="sim-carrier">
+                  {sim.carrierName || 'Unknown carrier'}
+                  <span>
+                    {sim.countryIso ?? '—'} · {sim.mcc ?? '—'}/{sim.mnc ?? '—'}
+                  </span>
+                </span>
+                <span className="sim-signal">{signalLabel(sim)}</span>
+                <span className={`sim-state ${sim.simState === 'Ready' ? 'ok' : 'bad'}`}>
+                  {sim.simState ?? 'Unknown'}
+                </span>
+                <div className="sim-meta">
+                  <span>Data {sim.dataEnabled ? 'on' : 'off'}</span>
+                  <span>Roaming {sim.roaming ? 'yes' : 'no'}</span>
+                  <span>Subscription {sim.subId}</span>
+                  <span>
+                    {sim.serial
+                      ? `ICCID ••••${sim.serial.slice(-4)}`
+                      : 'ICCID —'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="phone-empty">
+            <span className="empty-index">No lines</span>
+            <h3>No SIM detected.</h3>
+            <p>
+              {telephony?.error ??
+                'Connect a physical device with an active SIM. Emulators report no subscriptions.'}
+            </p>
+          </div>
+        )}
+
+        <div className="perm-strip">
+          <span className="micro">Agent permissions</span>
+          <Perm ok={permissions?.readPhoneState} label="Phone state" />
+          <Perm ok={permissions?.readPhoneNumbers} label="Numbers" />
+          <Perm ok={permissions?.readSms} label="Read SMS" />
+          <Perm ok={permissions?.sendSms} label="Send SMS" />
+          <Perm ok={permissions?.callPhone} label="Calls" />
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2>Messages</h2>
+            <span className="panel-sub">
+              {loading ? 'reading inbox…' : `${messages.length} recent`}
+            </span>
+          </div>
+          <div className="panel-actions">
+            <button className="btn btn-ghost btn-small" onClick={onRefresh}>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {notice?.scope === 'list' && (
+          <NoticeBar notice={notice} onDismiss={onDismissNotice} />
+        )}
+
+        <div className="sms-layout">
+          <div className="sms-list">
+            {loading && <p className="empty">Reading the inbox…</p>}
+            {!loading && messages.length === 0 && (
+              <p className="empty">
+                {permissions && !permissions.readSms
+                  ? 'Read SMS is off. Grant it on the device to list messages.'
+                  : 'No inbox messages.'}
+              </p>
+            )}
+            {messages.map((message) => (
+              <details className="sms-row" key={message.id}>
+                <summary>
+                  <span className="sms-address">
+                    {formatAddress(message.address)}
+                  </span>
+                  <span className="sms-time">{formatSmsTime(message.date)}</span>
+                  <span className="sms-line">
+                    {message.slotIndex != null
+                      ? `SIM ${message.slotIndex + 1}`
+                      : 'SIM —'}
+                  </span>
+                  <span className="sms-preview">
+                    {message.body || '(empty message)'}
+                  </span>
+                </summary>
+                <p className="sms-body">{message.body || '(empty message)'}</p>
+              </details>
+            ))}
+          </div>
+
+          <div className="sms-compose">
+            <div className="compose-head">
+              <h3>Send SMS</h3>
+              <span className="panel-sub">direct · no app</span>
+            </div>
+            {notice?.scope === 'sms' && (
+              <NoticeBar notice={notice} onDismiss={onDismissNotice} />
+            )}
+            <label className="field">
+              <span>Line</span>
+              <select
+                value={lineValue(smsSubId)}
+                onChange={(event) => setSmsSubId(event.target.value)}
+                disabled={sims.length === 0}
+              >
+                {sims.map((sim) => (
+                  <option key={sim.subId} value={sim.subId}>
+                    SIM {sim.slotIndex + 1} · {sim.carrierName ?? 'carrier'}
+                  </option>
+                ))}
+                {sims.length === 0 && <option value="">No line</option>}
+              </select>
+            </label>
+            <label className="field">
+              <span>To</span>
+              <input
+                value={smsTo}
+                onChange={(event) => setSmsTo(event.target.value)}
+                placeholder="+91…"
+                inputMode="tel"
+              />
+            </label>
+            <label className="field">
+              <span>Message</span>
+              <textarea
+                value={smsBody}
+                onChange={(event) => setSmsBody(event.target.value)}
+                placeholder="Text to send from the device"
+                rows={4}
+              />
+            </label>
+            <div className="compose-foot">
+              <span className="panel-sub">{smsBody.length} chars</span>
+              <button
+                className="btn btn-ink"
+                disabled={!canSend}
+                onClick={() => onSendSms(smsTo, smsBody, activeSmsSub)}
+              >
+                {smsPending ? 'Sending…' : 'Send SMS'}
+              </button>
+            </div>
+            {sims.length === 0 && (
+              <p className="hint">A line is required before sending SMS.</p>
+            )}
+            {permissions && !permissions.sendSms && (
+              <p className="hint">SEND_SMS is off on the agent.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2>Call forwarding</h2>
+            <span className="panel-sub">carrier USSD · may prompt on device</span>
+          </div>
+        </div>
+
+        {notice?.scope === 'forward' && (
+          <NoticeBar notice={notice} onDismiss={onDismissNotice} />
+        )}
+
+        <div className="forward-form">
+          <label className="field">
+            <span>Line</span>
+            <select
+              value={lineValue(forwardSubId)}
+              onChange={(event) => setForwardSubId(event.target.value)}
+              disabled={sims.length === 0}
+            >
+              {sims.map((sim) => (
+                <option key={sim.subId} value={sim.subId}>
+                  SIM {sim.slotIndex + 1} · {sim.carrierName ?? 'carrier'}
+                </option>
+              ))}
+              {sims.length === 0 && <option value="">No line</option>}
+            </select>
+          </label>
+          <label className="field">
+            <span>Rule</span>
+            <select
+              value={forwardMode}
+              onChange={(event) =>
+                setForwardMode(event.target.value as ForwardMode)
+              }
+            >
+              {Object.entries(FORWARD_MODES).map(([key, value]) => (
+                <option key={key} value={key}>
+                  {value.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Forward to</span>
+            <input
+              value={forwardNumber}
+              onChange={(event) => setForwardNumber(event.target.value)}
+              placeholder="+91…"
+              inputMode="tel"
+            />
+          </label>
+          <div className="forward-actions">
+            <button
+              className="btn btn-ink"
+              disabled={!enableCode || forwardPending}
+              onClick={() => sendPreset('enable')}
+            >
+              Enable
+            </button>
+            <button
+              className="btn btn-outline"
+              disabled={forwardPending}
+              onClick={() => sendPreset('disable')}
+            >
+              Disable
+            </button>
+            <button
+              className="btn btn-ghost"
+              disabled={forwardPending}
+              onClick={() => sendPreset('status')}
+            >
+              Status
+            </button>
+          </div>
+        </div>
+
+        <div className="forward-preview">
+          <span className="micro">Preset code</span>
+          <code>{enableCode || `${preset.enable}<number>#`}</code>
+          <span className="micro">Raw USSD</span>
+          <div className="raw-ussd">
+            <input
+              value={rawCode}
+              onChange={(event) => setRawCode(event.target.value)}
+              placeholder="*21*…"
+              inputMode="tel"
+            />
+            <button
+              className="btn btn-outline btn-small"
+              disabled={!rawCode.trim() || forwardPending}
+              onClick={() => onCallForward(rawCode.trim(), activeForwardSub)}
+            >
+              {forwardPending ? 'Waiting…' : 'Send code'}
+            </button>
+          </div>
+        </div>
+
+        <p className="hint">
+          Forwarding uses the carrier’s USSD service; the exact codes and
+          whether the network allows them vary by operator. The agent sends the
+          code and reports the network response. Some carriers require the
+          device screen to confirm.
+        </p>
+      </section>
+    </div>
+  )
+}
+
+function NoticeBar({
+  notice,
+  onDismiss
+}: {
+  notice: { ok: boolean; text: string }
+  onDismiss: () => void
+}) {
+  return (
+    <div className={`phone-notice ${notice.ok ? 'ok' : 'bad'}`} role="status">
+      <span className="status-dot" />
+      <span>{notice.text}</span>
+      <button
+        className="notice-close"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
+function Perm({ ok, label }: { ok?: boolean; label: string }) {
+  return (
+    <span className={`perm ${ok ? 'ok' : 'bad'}`}>
+      <span className="status-dot" />
+      {label}
+    </span>
+  )
+}
+
+function signalLabel(sim: SimInfo) {
+  if (sim.signalDbm != null) return `${sim.signalDbm} dBm`
+  if (sim.signalLevel != null) return `Level ${sim.signalLevel}/4`
+  return 'Signal —'
+}
+
+function formatAddress(address: string) {
+  if (!address) return 'Unknown sender'
+  return address
+}
+
+function formatSmsTime(ts: number) {
+  if (!ts) return '—'
+  return new Date(ts).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 function MacroRow({

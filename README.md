@@ -74,6 +74,9 @@ activity drawer:
 - **Control** — apps, snapshot with hotspots, tap/type/scroll, back/home/
   recents, and a composer that types into the focused field on the device
   (`Insert` = set text, `Insert + Enter` = set text and press the IME enter key).
+- **Phone** — SIM details and numbers, inbox messages, direct SMS sending, and
+  carrier-USSD call forwarding (all calls, no answer, busy, unreachable, or a
+  raw code). Requires the phone/SMS permissions on the agent.
 - **Macros** — JSON macro editor, parameters, save/delete, run.
 - **Recorder** — passive per-app recording: click **Record** on an app, then
   open that app on the device yourself. Leaving the app or pressing

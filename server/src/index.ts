@@ -23,7 +23,8 @@ import type {
   RunRecord,
   RunStep,
   SecretInfo,
-  ServerMessage
+  ServerMessage,
+  TelephonyInfo
 } from '../../shared/protocol'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
@@ -55,6 +56,7 @@ interface DeviceRecord {
   apps: AppInfo[]
   state?: DeviceState
   probes: Record<string, ProbeResult>
+  telephony?: TelephonyInfo
 }
 
 interface RecordingSession {
@@ -174,7 +176,8 @@ function summary(device: DeviceRecord): DeviceSummary {
     lastSeen: device.lastSeen,
     apps: device.apps,
     state: device.state,
-    probes: device.probes
+    probes: device.probes,
+    telephony: device.telephony
   }
 }
 
@@ -527,6 +530,36 @@ wss.on('connection', (ws) => {
         }
         case 'actionResult':
           broadcast({ t: 'actionResult', deviceId, ...msg })
+          break
+        case 'telephony': {
+          const telephony: TelephonyInfo = {
+            sims: Array.isArray(msg.sims) ? msg.sims : [],
+            permissions: msg.permissions ?? {
+              readSms: false,
+              sendSms: false,
+              readPhoneState: false,
+              readPhoneNumbers: false,
+              callPhone: false
+            },
+            error: msg.error ?? null
+          }
+          device.telephony = telephony
+          broadcast({ t: 'telephony', deviceId, ...telephony })
+          break
+        }
+        case 'smsList':
+          broadcast({
+            t: 'smsList',
+            deviceId,
+            messages: Array.isArray(msg.messages) ? msg.messages : [],
+            error: msg.error ?? null
+          })
+          break
+        case 'smsSendResult':
+          broadcast({ ...msg, t: 'smsSendResult', deviceId })
+          break
+        case 'ussdResult':
+          broadcast({ ...msg, t: 'ussdResult', deviceId })
           break
         case 'recordEvent': {
           const sessionId = msg.sessionId ? String(msg.sessionId) : ''

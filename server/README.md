@@ -91,12 +91,27 @@ Hello:
   "name": "Pixel 7", "model": "Pixel 7", "android": 35, "agent": "1.0.0" }
 ```
 
-Device → relay: `apps`, `state`, `snapshot`, `probe`, `actionResult`.
+Device → relay: `apps`, `state`, `snapshot`, `probe`, `actionResult`,
+`telephony`, `smsList`, `smsSendResult`, `ussdResult`.
 Admin → relay: `cmd` (`snapshot`, `launch`, `tap`, `tapXY`, `setText`,
-`inputText`, `scroll`, `globalAction`, `probe`, `probeTargets`, `listApps`).
+`inputText`, `scroll`, `globalAction`, `probe`, `probeTargets`, `listApps`,
+`telephonyInfo`, `smsList`, `smsSend`, `callForward`).
 `inputText` takes `{ text, submit }`: the agent focuses the editable field (or
 the first editable node on screen), applies `ACTION_SET_TEXT`, optionally
 presses IME enter, then sends a fresh snapshot.
+
+Telephony commands:
+
+- `telephonyInfo` → agent replies with `telephony`
+  (`sims`, `permissions`, `error`). The relay caches it on the device summary.
+- `smsList` with `limit` → agent replies with `smsList`
+  (`messages`, `error`). Inbox only.
+- `smsSend` with `{ to, body, subId }` → agent replies with `smsSendResult`
+  and `actionResult`. `subId = -1` uses the default line.
+- `callForward` with `{ code, subId }` → agent sends the USSD code and replies
+  with `ussdResult` when the network responds (20 s timeout). Standard GSM
+  forwarding codes: `*21*<number>#` all calls, `*61*` no answer, `*67*` busy,
+  `*62*` unreachable; `#21#` disables, `*#21#` checks status.
 
 Snapshots carry a base64 WebP image in Phase 1. Move to binary frames or HTTP
 URLs when the image volume grows.
@@ -105,6 +120,8 @@ URLs when the image volume grows.
 
 - No token or login: the relay trusts whoever can reach the WebSocket. Device
   identity is the generated device ID (`and_…`) shown in the agent.
+- Telephony snapshots (phone numbers, SMS bodies, USSD responses) are held in
+  memory and broadcast to admins. Treat the relay and its network as sensitive.
 - Keep it on localhost, the LAN, or Tailscale/WireGuard; do not expose it.
 - Before any real deployment: TLS, per-device credentials, admin accounts +
   TOTP, and a reverse proxy.
