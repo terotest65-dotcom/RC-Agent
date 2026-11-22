@@ -41,9 +41,8 @@ It is sent in the WebSocket `hello` message, not as a header.
 - **Macros** tab: JSON editor, save/delete, per-macro parameter form, Run.
 - **Recorder** tab: start/stop; live feed of text, taps, scrolls, and window
   changes; a **Text only** toggle to hide everything except typed text; a
-  prominent “last text entered” card showing app + text. Masked bullet fields
-  (`1`, `•2`, `••3`, `•••4`) are cleaned and concatenated to `1`, `12`, `123`,
-  `1234`.
+  **Typed text** list with every field's final value and **Copy all**; masked
+  bullet fields are cleaned and concatenated.
 - **Runs** tab: run history with per-step status, timing, error, and checkpoint
   screenshot.
 - Sample macro `Settings — open Network & internet` is seeded by the relay.

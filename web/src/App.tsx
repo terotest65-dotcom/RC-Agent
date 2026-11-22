@@ -1284,6 +1284,29 @@ function RecorderPanel({
     ? normalized.filter((event) => event.type === 'text')
     : normalized
 
+  const typedEntries: Array<{ key: string; app: string; text: string; ts: number }> = []
+  const seenText = new Set<string>()
+  for (const event of normalized) {
+    if (event.type !== 'text' || event.redacted) continue
+    const text = event.text ?? ''
+    if (!text) continue
+    const key = `${event.app ?? ''}:${event.viewId ?? event.className ?? ''}`
+    if (seenText.has(key)) continue
+    seenText.add(key)
+    typedEntries.push({ key, app: labelFor(event), text, ts: event.ts })
+  }
+
+  const copyTyped = async () => {
+    if (typedEntries.length === 0) return
+    try {
+      await navigator.clipboard.writeText(
+        typedEntries.map((entry) => `${entry.app}: ${entry.text}`).join('\n')
+      )
+    } catch {
+      // Clipboard access can be denied; the list is still visible.
+    }
+  }
+
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1331,6 +1354,31 @@ function RecorderPanel({
           <div className="empty">
             Start recording, then type in the target app on the device.
           </div>
+        )}
+      </div>
+
+      <div className="typed-list">
+        <div className="panel-head">
+          <h3>Typed text</h3>
+          <button
+            className="btn small"
+            onClick={copyTyped}
+            disabled={typedEntries.length === 0}
+          >
+            Copy all
+          </button>
+        </div>
+        {typedEntries.map((entry) => (
+          <div className="typed-row" key={entry.key}>
+            <span className="typed-list-app">{entry.app}</span>
+            <code>{entry.text}</code>
+            <span className="muted small">
+              {new Date(entry.ts).toLocaleTimeString()}
+            </span>
+          </div>
+        ))}
+        {typedEntries.length === 0 && (
+          <p className="empty">No text entered yet.</p>
         )}
       </div>
 
