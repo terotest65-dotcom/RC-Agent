@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">RC Agent</string>
+    <string name="a11y_label">RC Agent control</string>
+    <string name="a11y_description">Allows RC Agent to read the screen, take screenshots, and perform taps for internal macro runs.</string>
+    <string name="notification_listener_label">RC Agent OTP reader</string>
+    <string name="device_admin_label">RC Agent device admin</string>
+</resources>

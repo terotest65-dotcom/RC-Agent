@@ -39,7 +39,15 @@ Optional later: an ADB-based lab controller for devices on a bench.
 
 ## Getting started
 
-Nothing is scaffolded yet. Start with **Phase 0**: list apps, launch one, capture
-a settled screenshot with a hotspot map, and run the **capability probe** over the
-six v1 apps on two real devices. The probe tells you which apps are worth
-automating — don't guess from the app store listing.
+The Android agent scaffold is in [`android/`](android/). Build it with:
+
+```bash
+cd android
+./gradlew :app:assembleDebug
+```
+
+See [`android/README.md`](android/README.md) for install, accessibility, and
+Device Owner setup. Start with **Phase 0**: list apps, launch one, capture a
+settled screenshot, and run the **capability probe** over the six v1 apps. The
+probe tells you which apps are worth automating — don't guess from the app store
+listing.
