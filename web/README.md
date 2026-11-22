@@ -45,9 +45,19 @@ It is sent in the WebSocket `hello` message, not as a header.
   screenshot.
 - Sample macro `Settings — open Network & internet` is seeded by the relay.
 
+## Phase 3 surface
+
+- **Secrets** tab: add/delete named secrets; values are write-only and encrypted
+  at rest. Use `"secretRef": "name"` in a `setText` step.
+- **Grid** toggle in the snapshot panel: 6×10 numbered cells, sends `tapXY`.
+- **Draft macro** in the recorder: converts recorded taps/text into an editable
+  macro draft.
+- OTP prompt banner: when a `waitForOtp` step needs a human, enter the code in
+  the panel and submit it.
+- Recorder feeds now include app labels and view IDs for better drafts.
+
 ## Not yet
 
-- OTP prompt
+- OCR fallback
 - auth UI, TLS, per-device tokens
-- grid fallback and OCR
-- recorder → macro draft conversion
+- persistent run history

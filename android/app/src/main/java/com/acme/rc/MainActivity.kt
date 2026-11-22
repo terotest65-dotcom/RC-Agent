@@ -80,18 +80,31 @@ class MainActivity : ComponentActivity() {
                 var apps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
                 var device by remember { mutableStateOf(DeviceStateReader.read(this@MainActivity)) }
 
-                val notificationPermission = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestPermission()
+                val permissions = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestMultiplePermissions()
                 ) { }
 
                 LaunchedEffect(Unit) {
+                    val needed = mutableListOf<String>()
                     if (Build.VERSION.SDK_INT >= 33 &&
                         ContextCompat.checkSelfPermission(
                             this@MainActivity,
                             Manifest.permission.POST_NOTIFICATIONS
                         ) != PackageManager.PERMISSION_GRANTED
                     ) {
-                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        needed += Manifest.permission.POST_NOTIFICATIONS
+                    }
+                    // Optional: SMS OTP capture. Notification-based OTPs still work
+                    // if this is denied.
+                    if (ContextCompat.checkSelfPermission(
+                            this@MainActivity,
+                            Manifest.permission.RECEIVE_SMS
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        needed += Manifest.permission.RECEIVE_SMS
+                    }
+                    if (needed.isNotEmpty()) {
+                        permissions.launch(needed.toTypedArray())
                     }
                     apps = AppInventory.list(this@MainActivity)
                 }

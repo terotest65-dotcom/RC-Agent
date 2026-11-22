@@ -797,3 +797,90 @@ input {
   padding: 5px 7px;
   margin-top: 4px;
 }
+
+/* Phase 3 */
+.prompt-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.prompt-copy {
+  flex: 1;
+  min-width: 180px;
+}
+
+.prompt-banner input {
+  background: #0a1422;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 180px;
+}
+
+.secret-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.secret-form input {
+  background: #0a1422;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 200px;
+  flex: 1;
+}
+
+.secret-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.secret-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(18, 29, 45, 0.45);
+}
+
+.secret-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.grid-cell {
+  position: absolute;
+  background: rgba(2, 6, 23, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 0;
+  cursor: pointer;
+}
+
+.grid-cell:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #7dd3fc;
+}
+
+.grid-cell span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: rgba(2, 6, 23, 0.7);
+  color: #cbd5e1;
+  font-size: 9px;
+  padding: 1px 3px;
+}

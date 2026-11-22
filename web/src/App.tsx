@@ -8,8 +8,10 @@ import type {
   Element,
   Macro,
   ProbeResult,
+  PromptMessage,
   RecordEvent,
   RunRecord,
+  SecretInfo,
   ServerMessage,
   SnapshotMessage
 } from '../../shared/protocol'
@@ -31,7 +33,7 @@ const DEFAULT_MACRO = `{
   ]
 }`
 
-type Tab = 'control' | 'macros' | 'recorder' | 'runs'
+type Tab = 'control' | 'macros' | 'recorder' | 'runs' | 'secrets'
 
 function nowLabel() {
   return new Date().toLocaleTimeString()
@@ -54,6 +56,13 @@ export default function App() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [recording, setRecording] = useState(false)
   const [recordEvents, setRecordEvents] = useState<RecordEvent[]>([])
+
+  const [secrets, setSecrets] = useState<SecretInfo[]>([])
+  const [secretName, setSecretName] = useState('')
+  const [secretValue, setSecretValue] = useState('')
+  const [prompt, setPrompt] = useState<PromptMessage | null>(null)
+  const [promptValue, setPromptValue] = useState('')
+  const [gridMode, setGridMode] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const selectedRef = useRef<string | null>(null)
@@ -207,6 +216,17 @@ export default function App() {
           setRecording(msg.recording)
           appendLog(msg.recording ? 'recording started' : 'recording stopped')
           break
+        case 'secrets':
+          setSecrets(msg.secrets)
+          break
+        case 'secretSaved':
+          appendLog(`secret saved: ${msg.secret.name}`)
+          break
+        case 'prompt':
+          setPrompt(msg)
+          setPromptValue('')
+          appendLog(`prompt: ${msg.message}`)
+          break
         default:
           break
       }
@@ -347,6 +367,93 @@ export default function App() {
     sendRaw({ t: 'macroDelete', macroId: macro.id })
   }
 
+  const saveSecret = () => {
+    const name = secretName.trim()
+    if (!name || !secretValue) return
+    sendRaw({ t: 'secretSave', name, value: secretValue })
+    setSecretName('')
+    setSecretValue('')
+  }
+
+  const deleteSecret = (id: string) => {
+    sendRaw({ t: 'secretDelete', secretId: id })
+  }
+
+  const submitPrompt = () => {
+    if (!prompt) return
+    sendCmd(
+      prompt.deviceId,
+      'promptResult',
+      { promptId: prompt.promptId, value: promptValue },
+      false
+    )
+    setPrompt(null)
+    setPromptValue('')
+  }
+
+  const tapXY = (x: number, y: number) => {
+    if (!selected) return
+    sendCmd(selected.id, 'tapXY', { x, y })
+  }
+
+  const draftMacro = () => {
+    const chronological = [...recordEvents]
+      .reverse()
+      .filter((event) => event.app !== 'com.acme.rc')
+    const steps: any[] = []
+    const firstApp =
+      chronological.find((event) => event.type === 'tap' && event.app)?.app ??
+      chronological.find((event) => event.type === 'text' && event.app)?.app ??
+      chronological.find((event) => event.app)?.app
+
+    const launchPackage = (pkg: string) => {
+      if (apps.some((app) => app.pkg === pkg)) return pkg
+      if (pkg.startsWith('com.google.android.settings')) return 'com.android.settings'
+      return pkg
+    }
+
+    if (firstApp) steps.push({ op: 'launch', package: launchPackage(firstApp) })
+    steps.push({ op: 'waitForIdle' })
+
+    const textStepByField = new Map<string, number>()
+    for (const event of chronological) {
+      if (event.type === 'tap') {
+        if (event.viewId) {
+          steps.push({ op: 'tap', selector: { viewId: event.viewId } })
+        } else if (event.label) {
+          steps.push({ op: 'tap', selector: { text: event.label } })
+        }
+      } else if (event.type === 'text' && !event.redacted) {
+        const selector = event.viewId
+          ? { viewId: event.viewId }
+          : event.className
+            ? { className: event.className }
+            : null
+        if (!selector) continue
+        const key = event.viewId ?? event.className ?? 'field'
+        const index = textStepByField.get(key)
+        if (index !== undefined) {
+          steps[index].text = event.text ?? ''
+        } else {
+          const newIndex = steps.length
+          steps.push({ op: 'setText', selector, text: event.text ?? '' })
+          textStepByField.set(key, newIndex)
+        }
+      }
+    }
+
+    steps.push({ op: 'screenshot', label: 'recorded' })
+    const draft = {
+      name: `Recorded ${new Date().toLocaleTimeString()}`,
+      appPackage: firstApp,
+      steps
+    }
+    setMacroDraft(JSON.stringify(draft, null, 2))
+    setMacroError(null)
+    setTab('macros')
+    appendLog(`drafted macro with ${steps.length} steps`)
+  }
+
   const targetsInstalled = apps.filter((a) => TARGET_APPS.includes(a.pkg))
 
   return (
@@ -397,6 +504,29 @@ export default function App() {
         </aside>
 
         <main className="main">
+          {prompt && (
+            <div className="prompt-banner">
+              <div className="prompt-copy">
+                <strong>OTP required</strong>
+                <div className="muted small">
+                  {prompt.message} · run {prompt.runId.slice(0, 8)}
+                </div>
+              </div>
+              <input
+                value={promptValue}
+                onChange={(event) => setPromptValue(event.target.value)}
+                placeholder="Enter OTP"
+                autoFocus
+              />
+              <button className="btn primary" onClick={submitPrompt}>
+                Send OTP
+              </button>
+              <button className="btn" onClick={() => setPrompt(null)}>
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {!selected && (
             <div className="panel empty-panel">
               <h2>Select a device</h2>
@@ -494,6 +624,9 @@ export default function App() {
                 <TabButton active={tab === 'runs'} onClick={() => setTab('runs')}>
                   Runs {activeRun ? <span className="rec-dot" /> : null}
                 </TabButton>
+                <TabButton active={tab === 'secrets'} onClick={() => setTab('secrets')}>
+                  Secrets
+                </TabButton>
               </div>
 
               {tab === 'control' && (
@@ -531,6 +664,9 @@ export default function App() {
                     onTapElement={tapElement}
                     onScrollElement={scrollElement}
                     onSendText={sendText}
+                    gridMode={gridMode}
+                    onToggleGrid={() => setGridMode((value) => !value)}
+                    onTapXY={tapXY}
                   />
                 </>
               )}
@@ -593,6 +729,7 @@ export default function App() {
                   onStart={startRecording}
                   onStop={stopRecording}
                   onClear={() => setRecordEvents([])}
+                  onDraft={draftMacro}
                 />
               )}
 
@@ -601,6 +738,18 @@ export default function App() {
                   runs={runs}
                   selectedId={selectedRunId}
                   onSelect={setSelectedRunId}
+                />
+              )}
+
+              {tab === 'secrets' && (
+                <SecretsPanel
+                  secrets={secrets}
+                  name={secretName}
+                  value={secretValue}
+                  onName={setSecretName}
+                  onValue={setSecretValue}
+                  onSave={saveSecret}
+                  onDelete={deleteSecret}
                 />
               )}
             </>
@@ -728,7 +877,10 @@ function SnapshotCard({
   setEditing,
   onTapElement,
   onScrollElement,
-  onSendText
+  onSendText,
+  gridMode,
+  onToggleGrid,
+  onTapXY
 }: {
   snapshot: SnapshotMessage | null
   busy: boolean
@@ -739,18 +891,26 @@ function SnapshotCard({
   onTapElement: (element: Element) => void
   onScrollElement: (element: Element, dir: 'up' | 'down') => void
   onSendText: () => void
+  gridMode: boolean
+  onToggleGrid: () => void
+  onTapXY: (x: number, y: number) => void
 }) {
   return (
     <section className="panel">
       <div className="panel-head">
         <h2>Snapshot</h2>
-        {snapshot && (
-          <span className="muted small">
-            {snapshot.pkg ?? '?'} · {snapshot.w}×{snapshot.h} ·{' '}
-            {snapshot.elements.length} hotspots · {snapshot.nodeCount} nodes ·{' '}
-            {snapshot.elapsedMs} ms
-          </span>
-        )}
+        <div className="app-actions">
+          <button className="btn small" onClick={onToggleGrid}>
+            {gridMode ? 'Hotspots' : 'Grid'}
+          </button>
+          {snapshot && (
+            <span className="muted small">
+              {snapshot.pkg ?? '?'} · {snapshot.w}×{snapshot.h} ·{' '}
+              {snapshot.elements.length} hotspots · {snapshot.nodeCount} nodes ·{' '}
+              {snapshot.elapsedMs} ms
+            </span>
+          )}
+        </div>
       </div>
 
       {!snapshot && <p className="empty">Capture a screen to see hotspots.</p>}
@@ -767,24 +927,35 @@ function SnapshotCard({
               src={`data:image/webp;base64,${snapshot.image}`}
               alt="Device screen"
             />
-            {snapshot.elements.map((element) => (
-              <button
-                key={element.id}
-                className="hotspot"
-                title={elementLabel(element)}
-                style={{
-                  left: `${element.b[0] * 100}%`,
-                  top: `${element.b[1] * 100}%`,
-                  width: `${(element.b[2] - element.b[0]) * 100}%`,
-                  height: `${(element.b[3] - element.b[1]) * 100}%`
-                }}
-                onClick={() => onTapElement(element)}
-                disabled={busy}
-              >
-                <span>{element.i}</span>
-              </button>
-            ))}
+            {gridMode ? (
+              <GridOverlay onTap={onTapXY} />
+            ) : (
+              snapshot.elements.map((element) => (
+                <button
+                  key={element.id}
+                  className="hotspot"
+                  title={elementLabel(element)}
+                  style={{
+                    left: `${element.b[0] * 100}%`,
+                    top: `${element.b[1] * 100}%`,
+                    width: `${(element.b[2] - element.b[0]) * 100}%`,
+                    height: `${(element.b[3] - element.b[1]) * 100}%`
+                  }}
+                  onClick={() => onTapElement(element)}
+                  disabled={busy}
+                >
+                  <span>{element.i}</span>
+                </button>
+              ))
+            )}
           </div>
+
+          {gridMode && (
+            <p className="muted small">
+              Grid mode: tap a numbered cell to send a coordinate tap. Useful for
+              apps with a partial accessibility tree.
+            </p>
+          )}
 
           {editing && (
             <div className="edit-row">
@@ -940,7 +1111,8 @@ function RecorderPanel({
   disabled,
   onStart,
   onStop,
-  onClear
+  onClear,
+  onDraft
 }: {
   recording: boolean
   events: RecordEvent[]
@@ -949,6 +1121,7 @@ function RecorderPanel({
   onStart: () => void
   onStop: () => void
   onClear: () => void
+  onDraft: () => void
 }) {
   const lastText = events.find(
     (event) => event.type === 'text' && !event.redacted && (event.text?.length ?? 0) > 0
@@ -975,6 +1148,9 @@ function RecorderPanel({
           )}
           <button className="btn" onClick={onClear}>
             Clear
+          </button>
+          <button className="btn" onClick={onDraft} disabled={events.length === 0}>
+            Draft macro
           </button>
         </div>
       </div>
@@ -1119,5 +1295,99 @@ function RunReport({ run }: { run: RunRecord }) {
         {run.steps.length === 0 && <p className="empty">Waiting for steps…</p>}
       </div>
     </div>
+  )
+}
+
+function SecretsPanel({
+  secrets,
+  name,
+  value,
+  onName,
+  onValue,
+  onSave,
+  onDelete
+}: {
+  secrets: SecretInfo[]
+  name: string
+  value: string
+  onName: (value: string) => void
+  onValue: (value: string) => void
+  onSave: () => void
+  onDelete: (id: string) => void
+}) {
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2>Secrets</h2>
+        <span className="muted small">{secrets.length}</span>
+      </div>
+      <p className="muted small">
+        Values are encrypted at rest and never returned to the browser. Use{' '}
+        <code>"secretRef": "name"</code> in a <code>setText</code> step; the relay
+        injects it at run time.
+      </p>
+      <div className="secret-form">
+        <input
+          value={name}
+          onChange={(event) => onName(event.target.value)}
+          placeholder="Secret name (e.g. bank-password)"
+        />
+        <input
+          value={value}
+          onChange={(event) => onValue(event.target.value)}
+          placeholder="Secret value"
+          type="password"
+        />
+        <button
+          className="btn primary"
+          onClick={onSave}
+          disabled={!name.trim() || !value}
+        >
+          Save secret
+        </button>
+      </div>
+      <div className="secret-list">
+        {secrets.map((secret) => (
+          <div className="secret-row" key={secret.id}>
+            <span className="secret-name">{secret.name}</span>
+            <span className="muted small">
+              {new Date(secret.createdAt).toLocaleString()}
+            </span>
+            <button className="btn small" onClick={() => onDelete(secret.id)}>
+              Delete
+            </button>
+          </div>
+        ))}
+        {secrets.length === 0 && <p className="empty">No secrets yet.</p>}
+      </div>
+    </section>
+  )
+}
+
+function GridOverlay({ onTap }: { onTap: (x: number, y: number) => void }) {
+  const cols = 6
+  const rows = 10
+  return (
+    <>
+      {Array.from({ length: cols * rows }).map((_, index) => {
+        const col = index % cols
+        const row = Math.floor(index / cols)
+        return (
+          <button
+            key={index}
+            className="grid-cell"
+            style={{
+              left: `${(col / cols) * 100}%`,
+              top: `${(row / rows) * 100}%`,
+              width: `${100 / cols}%`,
+              height: `${100 / rows}%`
+            }}
+            onClick={() => onTap((col + 0.5) / cols, (row + 0.5) / rows)}
+          >
+            <span>{index + 1}</span>
+          </button>
+        )
+      })}
+    </>
   )
 }

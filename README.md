@@ -80,3 +80,15 @@ The web panel now has four tabs:
 
 A sample macro **Settings — open Network & internet** is seeded by the relay.
 Macros persist in `server/data/macros.json`.
+
+### Phase 3: OTP, secrets, grid, drafts
+
+- **OTP:** notification and SMS OTPs are captured on-device; `waitForOtp` consumes
+  one. If none arrives, the admin panel shows an OTP prompt and the operator can
+  type it.
+- **Secrets:** add named secrets in the **Secrets** tab; use
+  `"secretRef": "name"` in a `setText` step. Values are encrypted at rest and
+  never returned to the browser.
+- **Grid:** toggle **Grid** in the snapshot panel for a 6×10 coordinate grid.
+- **Draft macro:** record a session in **Recorder**, then click **Draft macro**
+  to get an editable macro skeleton.

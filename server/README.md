@@ -36,6 +36,19 @@ Environment:
 - Put it behind Tailscale/WireGuard for remote devices; do not expose `ws://`
   or the `dev` token to the internet.
 
+## Phase 3: OTP, secrets, grid
+
+- **OTP:** the agent's notification listener and SMS receiver push codes into an
+  in-memory 5-minute buffer. A `waitForOtp` macro step consumes the code; if
+  none arrives, the agent sends a `prompt` and the web panel asks the operator.
+  The reply is sent as a `promptResult` command.
+- **Secrets:** values are AES-256-GCM encrypted in `secrets.json` and never
+  returned by the API. A `setText` step can use `"secretRef": "name"`; the relay
+  decrypts and injects the value only for that run. Set `RC_SECRET_KEY` before
+  first use; the default is development-only.
+- **Grid:** the web panel can overlay a 6×10 numbered grid and send `tapXY`.
+- **Draft macro:** the recorder can turn recorded taps/text into a macro draft.
+
 ## Endpoints
 
 | Path | Purpose |
@@ -44,6 +57,7 @@ Environment:
 | `GET /api/devices` | device summaries (apps, state, probes) |
 | `GET /api/macros` | saved macros |
 | `GET /api/runs` | last 20 run reports |
+| `GET /api/secrets` | secret names/metadata only, never values |
 | `WS /ws` | device and admin socket |
 | `GET /` | web panel (SPA) |
 

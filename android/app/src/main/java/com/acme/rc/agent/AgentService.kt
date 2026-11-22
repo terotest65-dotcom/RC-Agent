@@ -29,6 +29,8 @@ import com.acme.rc.model.ProbeResult
 import com.acme.rc.model.Selector
 import com.acme.rc.model.Snapshot
 import com.acme.rc.model.TargetApps
+import com.acme.rc.otp.OtpBuffer
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,6 +40,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -46,6 +49,7 @@ import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
@@ -87,6 +91,9 @@ class AgentService : Service() {
 
     private val lastTexts = mutableMapOf<String, String>()
     private val cancelledRuns = mutableSetOf<String>()
+    private val promptDeferred = mutableMapOf<String, CompletableDeferred<String>>()
+    private val runVars = mutableMapOf<String, String>()
+    private var currentRunId: String? = null
 
     private var reconnectAttempt = 0
     private var reconnectJob: Job? = null
@@ -288,6 +295,12 @@ class AgentService : Service() {
                 sendResult(cmdId, true)
                 return
             }
+            "promptResult" -> {
+                val promptId = msg.optString("promptId")
+                promptDeferred.remove(promptId)?.complete(msg.optString("value"))
+                sendResult(cmdId, true)
+                return
+            }
         }
 
         scope.launch {
@@ -444,12 +457,16 @@ class AgentService : Service() {
         val dir: String?,
         val name: String?,
         val label: String?,
-        val ms: Long
+        val ms: Long,
+        val secretRef: String?,
+        val secret: Boolean
     )
 
     private data class StepResult(val status: String, val error: String? = null)
 
     private suspend fun runMacro(runId: String, macro: JSONObject, params: JSONObject) {
+        runVars.clear()
+        currentRunId = runId
         val macroId = macro.optString("id")
         val macroName = macro.optString("name", "macro")
         val stepsJson = macro.optJSONArray("steps") ?: JSONArray()
@@ -484,7 +501,7 @@ class AgentService : Service() {
             var snapshot: Snapshot? = null
 
             try {
-                val result = executeStep(step)
+                val result = executeStep(step, params)
                 stepStatus = result.status
                 error = result.error
                 when (result.status) {
@@ -528,9 +545,11 @@ class AgentService : Service() {
                 .put("finishedAt", System.currentTimeMillis())
                 .toString()
         )
+        currentRunId = null
+        runVars.clear()
     }
 
-    private suspend fun executeStep(step: Step): StepResult {
+    private suspend fun executeStep(step: Step, params: JSONObject): StepResult {
         val service = service()
 
         when (step.op) {
@@ -549,6 +568,12 @@ class AgentService : Service() {
                 }
             }
             "waitForIdle" -> delay(500)
+            "waitForOtp" -> {
+                val timeout = if (step.timeoutMs > 0) step.timeoutMs else 60_000L
+                val code = awaitOtp(timeout)
+                    ?: return StepResult("failed", "OTP not received")
+                runVars["otp"] = code
+            }
             "tap" -> {
                 val selector = step.selector
                     ?: return StepResult("failed", "tap requires selector")
@@ -565,7 +590,8 @@ class AgentService : Service() {
             "setText" -> {
                 val selector = step.selector
                     ?: return StepResult("failed", "setText requires selector")
-                if (!service.setTextSelector(selector, step.text ?: "")) {
+                val text = resolve(step.text, params) ?: ""
+                if (!service.setTextSelector(selector, text)) {
                     return StepResult("failed", "setText failed")
                 }
                 delay(500)
@@ -619,13 +645,40 @@ class AgentService : Service() {
         return service.exists(selector)
     }
 
+    private suspend fun awaitOtp(timeoutMs: Long): String? {
+        val started = SystemClock.elapsedRealtime()
+        while (SystemClock.elapsedRealtime() - started < timeoutMs) {
+            OtpBuffer.take()?.let { return it }
+            delay(500)
+        }
+
+        val promptId = UUID.randomUUID().toString()
+        val deferred = CompletableDeferred<String>()
+        promptDeferred[promptId] = deferred
+        socket?.send(
+            JSONObject()
+                .put("t", "prompt")
+                .put("runId", currentRunId ?: "")
+                .put("promptId", promptId)
+                .put("kind", "otp")
+                .put("message", "Enter the OTP")
+                .toString()
+        )
+        val value = withTimeoutOrNull(120_000L) { deferred.await() }
+        promptDeferred.remove(promptId)
+        return value?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
     private suspend fun captureForReport(step: Step): Snapshot? {
         return when (step.op) {
-            "waitFor", "waitForIdle", "sleep" -> null
-            else -> try {
-                service().captureSnapshot()
-            } catch (_: Throwable) {
-                null
+            "waitFor", "waitForIdle", "waitForOtp", "sleep" -> null
+            else -> {
+                if (step.secretRef != null || step.secret) return null
+                try {
+                    service().captureSnapshot()
+                } catch (_: Throwable) {
+                    null
+                }
             }
         }
     }
@@ -643,7 +696,9 @@ class AgentService : Service() {
             dir = obj.optString("dir").takeIf { it.isNotBlank() },
             name = resolve(obj.optString("name").takeIf { it.isNotBlank() }, params),
             label = resolve(obj.optString("label").takeIf { it.isNotBlank() }, params),
-            ms = obj.optLong("ms", 500L)
+            ms = obj.optLong("ms", 500L),
+            secretRef = obj.optString("secretRef").takeIf { it.isNotBlank() },
+            secret = obj.optBoolean("secret", false)
         )
     }
 
@@ -661,6 +716,9 @@ class AgentService : Service() {
 
     private fun resolve(value: String?, params: JSONObject): String? {
         var result = value ?: return null
+        for ((key, replacement) in runVars) {
+            result = result.replace("{{$key}}", replacement)
+        }
         val keys = params.keys()
         while (keys.hasNext()) {
             val key = keys.next()
@@ -712,6 +770,21 @@ class AgentService : Service() {
 
         val app = event.packageName?.toString()
         val activity = event.className?.toString()
+        val source = try {
+            event.source
+        } catch (_: Throwable) {
+            null
+        }
+        val sourceId = try {
+            source?.viewIdResourceName
+        } catch (_: Throwable) {
+            null
+        }
+        val sourceClass = try {
+            source?.className?.toString()
+        } catch (_: Throwable) {
+            null
+        }
 
         // The keyboard window is noise for a "what did the user type" feed.
         if (type == "window" &&
@@ -726,14 +799,11 @@ class AgentService : Service() {
             .put("app", app ?: JSONObject.NULL)
             .put("appLabel", resolveAppLabel(app) ?: JSONObject.NULL)
             .put("activity", activity ?: JSONObject.NULL)
+            .put("viewId", sourceId ?: JSONObject.NULL)
+            .put("className", sourceClass ?: JSONObject.NULL)
 
         when (type) {
             "text" -> {
-                val sourceId = try {
-                    event.source?.viewIdResourceName
-                } catch (_: Throwable) {
-                    null
-                }
                 val key = "${event.windowId}:${event.className}:${sourceId ?: ""}"
                 val current = event.text?.joinToString("") ?: ""
 

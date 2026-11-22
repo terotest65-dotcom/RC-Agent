@@ -9,7 +9,7 @@ import {
 } from 'node:fs'
 import { extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto'
 import { WebSocketServer, type WebSocket as WsSocket } from 'ws'
 import type {
   AppInfo,
@@ -20,6 +20,7 @@ import type {
   Role,
   RunRecord,
   RunStep,
+  SecretInfo,
   ServerMessage
 } from '../../shared/protocol'
 
@@ -27,8 +28,19 @@ const here = fileURLToPath(new URL('.', import.meta.url))
 const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
+const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const TOKEN = process.env.RC_TOKEN ?? 'dev'
+const SECRET_KEY = process.env.RC_SECRET_KEY ?? 'rc-dev-secret-key-change-me'
+
+interface StoredSecret {
+  id: string
+  name: string
+  createdAt: number
+  iv: string
+  tag: string
+  data: string
+}
 
 interface DeviceRecord {
   ws: WsSocket
@@ -48,6 +60,7 @@ const devices = new Map<string, DeviceRecord>()
 const admins = new Set<WsSocket>()
 const macros = new Map<string, Macro>()
 const runs = new Map<string, RunRecord>()
+const secrets = new Map<string, StoredSecret>()
 
 function log(...args: unknown[]) {
   console.log(new Date().toISOString(), ...args)
@@ -109,6 +122,7 @@ const server = createServer((req, res) => {
       admins: admins.size,
       macros: macros.size,
       runs: runs.size,
+      secrets: secrets.size,
       uptime: Math.round(process.uptime())
     })
     return
@@ -126,6 +140,11 @@ const server = createServer((req, res) => {
 
   if (url.pathname === '/api/runs') {
     json(res, recentRuns())
+    return
+  }
+
+  if (url.pathname === '/api/secrets') {
+    json(res, [...secrets.values()].map(secretInfo))
     return
   }
 
@@ -227,7 +246,71 @@ function saveMacros() {
   }
 }
 
+// ---------------------------------------------------------------------
+// Secrets (AES-256-GCM at rest; the value is only decrypted at run time)
+// ---------------------------------------------------------------------
+
+const secretKey = scryptSync(SECRET_KEY, 'rc-secrets-salt', 32)
+
+function encryptSecret(value: string) {
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', secretKey, iv)
+  const data = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
+  return {
+    iv: iv.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+    data: data.toString('base64')
+  }
+}
+
+function decryptSecret(secret: StoredSecret): string {
+  const decipher = createDecipheriv(
+    'aes-256-gcm',
+    secretKey,
+    Buffer.from(secret.iv, 'base64')
+  )
+  decipher.setAuthTag(Buffer.from(secret.tag, 'base64'))
+  return Buffer.concat([
+    decipher.update(Buffer.from(secret.data, 'base64')),
+    decipher.final()
+  ]).toString('utf8')
+}
+
+function secretInfo(secret: StoredSecret): SecretInfo {
+  return { id: secret.id, name: secret.name, createdAt: secret.createdAt }
+}
+
+function loadSecrets() {
+  if (!existsSync(SECRETS_FILE)) return
+  try {
+    const parsed = JSON.parse(readFileSync(SECRETS_FILE, 'utf8')) as StoredSecret[]
+    for (const secret of parsed) {
+      if (secret?.id && secret?.name && secret?.data) {
+        secrets.set(secret.id, secret)
+      }
+    }
+  } catch (error) {
+    log('failed to load secrets', error)
+  }
+}
+
+function saveSecrets() {
+  try {
+    mkdirSync(DATA_DIR, { recursive: true })
+    const temp = `${SECRETS_FILE}.tmp`
+    writeFileSync(temp, JSON.stringify([...secrets.values()], null, 2))
+    renameSync(temp, SECRETS_FILE)
+  } catch (error) {
+    log('failed to save secrets', error)
+  }
+}
+
+function sendSecrets(ws: WsSocket) {
+  send(ws, { t: 'secrets', secrets: [...secrets.values()].map(secretInfo) })
+}
+
 loadMacros()
+loadSecrets()
 
 // ---------------------------------------------------------------------
 // WebSocket relay
@@ -274,6 +357,7 @@ wss.on('connection', (ws) => {
         send(ws, { t: 'devices', devices: [...devices.values()].map(summary) })
         sendMacros(ws)
         sendRuns(ws)
+        sendSecrets(ws)
         log('admin connected')
         return
       }
@@ -343,6 +427,9 @@ wss.on('connection', (ws) => {
           break
         case 'recordingState':
           broadcast({ t: 'recordingState', deviceId, recording: !!msg.recording })
+          break
+        case 'prompt':
+          broadcast({ t: 'prompt', deviceId, ...msg })
           break
         case 'runStarted': {
           const run: RunRecord = runs.get(msg.runId) ?? {
@@ -421,6 +508,50 @@ wss.on('connection', (ws) => {
         return
       }
 
+      if (msg.t === 'secretList') {
+        sendSecrets(ws)
+        return
+      }
+
+      if (msg.t === 'secretSave') {
+        const name = String(msg.name ?? '').trim()
+        const value = String(msg.value ?? '')
+        if (!name || !value) {
+          fail('secret name and value required')
+          return
+        }
+        if ([...secrets.values()].some((secret) => secret.name === name)) {
+          fail(`secret already exists: ${name}`)
+          return
+        }
+        const encrypted = encryptSecret(value)
+        const secret: StoredSecret = {
+          id: randomUUID(),
+          name,
+          createdAt: Date.now(),
+          ...encrypted
+        }
+        secrets.set(secret.id, secret)
+        saveSecrets()
+        broadcast({ t: 'secretSaved', secret: secretInfo(secret) })
+        broadcast({
+          t: 'secrets',
+          secrets: [...secrets.values()].map(secretInfo)
+        })
+        return
+      }
+
+      if (msg.t === 'secretDelete') {
+        const id = String(msg.secretId ?? '')
+        if (id) secrets.delete(id)
+        saveSecrets()
+        broadcast({
+          t: 'secrets',
+          secrets: [...secrets.values()].map(secretInfo)
+        })
+        return
+      }
+
       if (msg.t === 'cmd') {
         const target = msg.deviceId ? devices.get(String(msg.deviceId)) : undefined
         if (!target || !target.online) {
@@ -434,6 +565,27 @@ wss.on('connection', (ws) => {
             fail(`unknown macro: ${msg.macroId}`)
             return
           }
+
+          let resolvedMacro: Macro
+          try {
+            resolvedMacro = {
+              ...macro,
+              steps: macro.steps.map((step) => {
+                if (!step.secretRef) return step
+                const secret = [...secrets.values()].find(
+                  (candidate) =>
+                    candidate.name === step.secretRef ||
+                    candidate.id === step.secretRef
+                )
+                if (!secret) throw new Error(`unknown secret: ${step.secretRef}`)
+                return { ...step, text: decryptSecret(secret) }
+              })
+            }
+          } catch (error) {
+            fail(error instanceof Error ? error.message : String(error))
+            return
+          }
+
           const runId = randomUUID()
           const params =
             msg.params && typeof msg.params === 'object' ? msg.params : {}
@@ -456,7 +608,7 @@ wss.on('connection', (ws) => {
               deviceId: target.id,
               action: 'runMacro',
               runId,
-              macro,
+              macro: resolvedMacro,
               params
             })
           )

@@ -636,6 +636,10 @@ Even internal, this system can read OTPs and drive sensitive apps.
 > with `expect`/`assert`/`tapIfExists`, run reports with checkpoint screenshots,
 > and a live recorder (text/tap/scroll/window events, password redaction) are
 > implemented. Macros persist in `server/data/macros.json`.
+>
+> **Phase 3 status:** OTP capture (notification listener + SMS receiver) with
+> `waitForOtp` and a human prompt fallback; AES-GCM secrets with `secretRef`;
+> a 6×10 grid fallback; and recorder → macro drafts are implemented.
 
 **Phase 0 exit criteria:** on two devices, list apps, launch one, capture a settled screenshot, and classify the six v1 apps as `controllable` / `partial` / `blocked`. If that works, the rest is engineering.
 

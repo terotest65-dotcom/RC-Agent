@@ -157,6 +157,7 @@ export type MacroOp =
   | 'launch'
   | 'waitFor'
   | 'waitForIdle'
+  | 'waitForOtp'
   | 'tap'
   | 'tapIfExists'
   | 'setText'
@@ -178,6 +179,8 @@ export interface MacroStep {
   name?: string
   label?: string
   ms?: number
+  secretRef?: string
+  secret?: boolean
 }
 
 export interface MacroParam {
@@ -227,6 +230,8 @@ export interface RecordEvent {
   app?: string | null
   appLabel?: string | null
   activity?: string | null
+  viewId?: string | null
+  className?: string | null
   text?: string | null
   delta?: string | null
   before?: string | null
@@ -277,6 +282,31 @@ export interface RecordingStateMessage {
   recording: boolean
 }
 
+export interface PromptMessage {
+  t: 'prompt'
+  deviceId: string
+  runId: string
+  promptId: string
+  kind: 'otp' | 'text'
+  message: string
+}
+
+export interface SecretInfo {
+  id: string
+  name: string
+  createdAt: number
+}
+
+export interface SecretsMessage {
+  t: 'secrets'
+  secrets: SecretInfo[]
+}
+
+export interface SecretSavedMessage {
+  t: 'secretSaved'
+  secret: SecretInfo
+}
+
 export type ServerMessage =
   | DevicesMessage
   | DeviceMessage
@@ -295,6 +325,9 @@ export type ServerMessage =
   | RunFinishedMessage
   | RecordEventMessage
   | RecordingStateMessage
+  | PromptMessage
+  | SecretsMessage
+  | SecretSavedMessage
 
 export type ActionName =
   | 'listApps'
@@ -311,6 +344,7 @@ export type ActionName =
   | 'cancelRun'
   | 'startRecording'
   | 'stopRecording'
+  | 'promptResult'
 
 export interface CommandMessage {
   t: 'cmd'
