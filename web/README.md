@@ -54,10 +54,10 @@ It is sent in the WebSocket `hello` message, not as a header.
 - **Grid** toggle in the snapshot panel: 6×10 numbered cells, sends `tapXY`.
 - **Draft macro** in the recorder: converts recorded taps/text into an editable
   macro draft.
-- **Per-app recording:** click **Record** on any app row, use the app normally
-  on the device, then click **Stop & save**. The relay generates and saves the
-  macro automatically (launch, taps, text, scrolls, screenshot; masked text
-  becomes a secret step).
+- **Per-app recording:** click **Record** on any app row, then open the app on
+  the device yourself. The panel listens while you use it; leaving the app or
+  clicking **Stop & save** saves the macro automatically (launch, taps, text,
+  scrolls, screenshot; masked text becomes a secret step).
 - OTP prompt banner: when a `waitForOtp` step needs a human, enter the code in
   the panel and submit it.
 - Recorder feeds now include app labels and view IDs for better drafts.

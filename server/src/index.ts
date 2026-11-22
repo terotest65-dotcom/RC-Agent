@@ -407,6 +407,7 @@ function macroFromSession(session: RecordingSession): Macro | null {
 }
 
 function finalizeSession(session: RecordingSession) {
+  if (!recordingSessions.has(session.id)) return
   recordingSessions.delete(session.id)
   const macro = macroFromSession(session)
   if (!macro) {
@@ -547,14 +548,19 @@ wss.on('connection', (ws) => {
           })
           break
         }
-        case 'recordingState':
+        case 'recordingState': {
           broadcast({
             t: 'recordingState',
             deviceId,
             recording: !!msg.recording,
             ...(msg.sessionId ? { sessionId: msg.sessionId } : {})
           })
+          if (!msg.recording && msg.sessionId) {
+            const session = recordingSessions.get(String(msg.sessionId))
+            if (session) setTimeout(() => finalizeSession(session), 500)
+          }
           break
+        }
         case 'prompt':
           broadcast({ t: 'prompt', deviceId, ...msg })
           break

@@ -297,6 +297,7 @@ export default function App() {
           }
           setRecording(msg.recording)
           appendLog(msg.recording ? 'recording started' : 'recording stopped')
+          if (!msg.recording) setActiveSession(null)
           break
         case 'secrets':
           setSecrets(msg.secrets)
@@ -436,8 +437,8 @@ export default function App() {
       { sessionId, appPackage: app.pkg, appLabel: app.label, name },
       false
     )
-    // Start recording first, then open the app from its main screen.
-    sendCmd(selected.id, 'launch', { pkg: app.pkg }, false)
+    // Do not launch the app: the user opens it and recording stops when
+    // they leave it or press Stop & save.
   }
 
   const stopRecording = () => {
@@ -1338,8 +1339,9 @@ function RecorderPanel({
 
       {sessionLabel && (
         <p className="muted small">
-          Recording for <strong>{sessionLabel}</strong>. Use the app normally, then
-          click <strong>Stop &amp; save</strong> to create the macro.
+          Recording for <strong>{sessionLabel}</strong>. Open it on the device and
+          use it normally; recording stops when you leave the app or click{' '}
+          <strong>Stop &amp; save</strong>.
         </p>
       )}
 

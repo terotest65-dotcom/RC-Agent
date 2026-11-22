@@ -98,6 +98,8 @@ class AgentService : Service() {
     private val runVars = mutableMapOf<String, String>()
     private var currentRunId: String? = null
     private var currentSessionId: String? = null
+    private var recordAppPackage: String? = null
+    private var appEntered = false
 
     private var reconnectAttempt = 0
     private var reconnectJob: Job? = null
@@ -134,6 +136,9 @@ class AgentService : Service() {
         shouldReconnect = false
         recording = false
         instance = null
+        currentSessionId = null
+        recordAppPackage = null
+        appEntered = false
         reconnectJob?.cancel()
         socket?.close(1000, "service stopped")
         socket = null
@@ -289,6 +294,12 @@ class AgentService : Service() {
             "startRecording" -> {
                 recording = true
                 currentSessionId = msg.optString("sessionId").takeIf { it.isNotBlank() }
+                recordAppPackage = msg.optString("appPackage").takeIf { it.isNotBlank() }
+                appEntered = recordAppPackage?.let { target ->
+                    RcAccessibilityService.instance?.currentPackage?.let {
+                        relatedPackage(it, target)
+                    } == true
+                } ?: false
                 lastTexts.clear()
                 maskedTyped.clear()
                 maskedVisible.clear()
@@ -300,6 +311,8 @@ class AgentService : Service() {
                 val sessionId = currentSessionId
                 recording = false
                 currentSessionId = null
+                recordAppPackage = null
+                appEntered = false
                 sendRecordingState(false, sessionId)
                 sendResult(cmdId, true)
                 return
@@ -778,6 +791,21 @@ class AgentService : Service() {
         }
 
         val app = event.packageName?.toString()
+        val target = recordAppPackage
+        if (target != null && app != null) {
+            if (relatedPackage(app, target)) {
+                appEntered = true
+            } else if (
+                type == "window" &&
+                appEntered &&
+                !ignoredForStop(app)
+            ) {
+                // The user left the app (home, another app, close): save and stop.
+                autoStopRecording()
+                return
+            }
+        }
+
         val activity = event.className?.toString()
         val source = try {
             event.source
@@ -898,6 +926,35 @@ class AgentService : Service() {
             .put("recording", recording)
         if (sessionId != null) message.put("sessionId", sessionId)
         socket?.send(message.toString())
+    }
+
+    private fun relatedPackage(pkg: String, target: String): Boolean {
+        if (pkg == target) return true
+        if (pkg.startsWith(target) || target.startsWith(pkg)) return true
+        if (pkg.contains("settings") && target.contains("settings")) return true
+        return false
+    }
+
+    private fun ignoredForStop(pkg: String): Boolean {
+        val lower = pkg.lowercase()
+        return lower.contains("inputmethod") ||
+            lower.contains("keyboard") ||
+            lower.contains("permissioncontroller") ||
+            lower.contains("documentsui") ||
+            lower.contains("intentresolver") ||
+            pkg == "com.android.systemui" ||
+            pkg == "android" ||
+            pkg == "com.acme.rc"
+    }
+
+    private fun autoStopRecording() {
+        if (!recording) return
+        val sessionId = currentSessionId
+        recording = false
+        currentSessionId = null
+        recordAppPackage = null
+        appEntered = false
+        sendRecordingState(false, sessionId)
     }
 
     private fun resolveAppLabel(pkg: String?): String? {
