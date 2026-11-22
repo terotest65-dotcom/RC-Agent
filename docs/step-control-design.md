@@ -11,18 +11,21 @@
 
 | Decision | Choice |
 |---|---|
-| Target apps | **Own** banking/payment apps that permit screenshots and control; messaging/social via UI automation; device settings |
-| Third-party banking | **Out of scope**; official APIs later through an `api` step |
+| Target apps | **Curated common Indian apps that pass a capability probe**; own apps can be added later |
+| Own-app test tags | **Not available in v1**; selectors rely on `viewId`/text/description where exposed |
+| Payments | Probe and navigate; **no real transactions** in v1; stop before the final confirm |
+| Third-party APIs | Later, through an `api` step |
 | Device location | Remote / field phones (no ADB) |
 | Autonomy | **Fully automatic**; human fallback only for OTPs and macro repair |
-| App management | Launch + control only; no Device Owner for install/uninstall |
+| Scheduling | **On-demand only**; no cron or queue |
+| App management | Launch + control only |
 | OTP source | SMS or notification, with **human input fallback** |
-| Device state | Unlocked + charging in v1; add keep-awake/unlock support |
+| Device state | Unlocked + charging; **Device Owner accepted** for keyguard and keep-awake |
 | Admin surface | Web panel only |
 | Live view | Screenshot per step; no video |
 | Scale | 1–5 devices |
 | Android | **13+ (API 33+)** |
-| Macro authoring | Record user interactions + edit; hardware keys where possible |
+| Recorder | Taps, text, scroll, and screen/app context; no hardware-key capture in v1 |
 
 **Product shape:** choose device → choose app → run macro → read report. The numbered-screenshot console is the **debug/repair** tool, not the primary UI.
 
@@ -30,15 +33,16 @@
 
 ## 1. Why this scope works
 
-- **Own apps** means you can guarantee the accessibility tree is present and stable, and you can add stable test IDs. You cannot do that with third-party banking apps.
+- **A capability probe decides the app set.** We measure screenshot access, tree richness, and IDs per app/version; we do not assume.
 - **Android 13+** removes most legacy branches: `takeScreenshot` (API 30), prefetching tree API (33), notification listener, modern FGS rules.
-- **1–5 devices** means one small server, SQLite or Postgres, no Redis, no queue cluster, no multi-tenant design.
-- **Fully automatic** means the macro engine and the run report are the product. The manual console exists to debug failed runs and repair selectors.
+- **1–5 devices** means one small server, SQLite or Postgres, no Redis, no queue cluster, no scheduler.
+- **Fully automatic, on demand** means the macro engine and the run report are the product. The manual console exists to debug failed runs and repair selectors.
 - **No video** means no MediaProjection consent, no codecs, no TURN.
 
 ### What we deliberately do not support
 
-- Third-party banking/payment apps (they hide their UI and block screenshots).
+- Apps that hide their UI (`accessibilityDataSensitive`) or block screenshots (`FLAG_SECURE`).
+- Real monetary transactions in v1; test navigation only, and stop before the final confirm.
 - Biometric prompts and secure PIN pads.
 - Games/canvas apps without a tree (grid fallback only).
 - Real-time interaction and free-form drawing.
@@ -55,7 +59,7 @@
 │ LauncherApps ──────────────┼── app inventory ──────────────►│ devices, apps        │
 │ AccessibilityService       │                                │ snapshots, runs      │
 │  ├ tree + selectors        │◄─ runMacro / tap / prompt ─────│ macros, secrets      │
-│  ├ takeScreenshot          │── snapshot + step events ─────►│ queue, audit         │
+│  ├ takeScreenshot          │── snapshot + step events ─────►│ runs, audit          │
 │  ├ dispatchGesture         │                                │ OTP events           │
 │  └ onKeyEvent (recorder)   │                                │                      │
 │ OTP listeners              │                                └──────────┬───────────┘
@@ -91,7 +95,7 @@ For 1–5 devices kept on chargers, a **persistent WSS + foreground service** is
 
 This is the #1 operational failure mode for unattended runs. Handle it explicitly.
 
-**v1 setup (recommended, no Device Owner):**
+**v1 setup (no Device Owner needed):**
 
 1. Set screen lock to **None/Swipe**.
 2. Enable **Stay awake while charging**:
@@ -114,6 +118,14 @@ This is the #1 operational failure mode for unattended runs. Handle it explicitl
 
 **Note:** `GLOBAL_ACTION_LOCK_SCREEN` can lock the device, but there is no global "unlock" action.
 
+**Device Owner (accepted for v1):** provision once via QR or `adb shell dpm set-device-owner …`. Use it to:
+
+- `setKeyguardDisabled(admin, true)` — remove the lock screen;
+- keep the device awake while charging (developer setting, or `setGlobalSetting` where permitted);
+- grant runtime permissions if needed.
+
+It does **not** enable Accessibility or notification access; those remain user toggles.
+
 ### 3.3 App inventory
 
 Use `LauncherApps`, not `PackageManager`, so work profiles work correctly:
@@ -129,6 +141,47 @@ val apps = launcher.getActivityList(null, Process.myUserHandle())
 - Per app: label, package, versionName, versionCode, enabled, system flag, icon URL.
 - **Icons are served over HTTP with cache headers**, not base64 in every `apps` message.
 - Refresh on `PACKAGE_ADDED`, `PACKAGE_REMOVED`, `PACKAGE_CHANGED` broadcasts.
+
+### 3.3.1 Capability probe (how the app list is decided)
+
+"We support apps that allow control" is not a specification until it is measured. For every candidate app on every device, record a capability profile.
+
+Probe procedure:
+
+1. Launch the app; wait for the screen to settle.
+2. Take a screenshot; record success or `SECURE_WINDOW`.
+3. Read the active window tree; count nodes, clickable nodes, nodes with a `viewId`, and max depth.
+4. Record package, `versionCode`, activity, and elapsed time.
+5. Do **not** inject input during the probe; a broken tree is enough to classify it.
+
+Store:
+
+```
+app_capabilities(device_id, package, version_code, screenshot_ok, secure_window,
+                 node_count, clickable_count, view_id_count, depth, verdict, probed_at)
+```
+
+Verdict:
+
+| Verdict | Criteria | Use |
+|---|---|---|
+| `controllable` | Screenshot works, ≥5 clickable nodes, at least some labels/IDs | Full macro support |
+| `partial` | Screenshot works, tree sparse or mostly unlabeled | Grid fallback; manual only |
+| `blocked` | `SECURE_WINDOW` or empty tree | Excluded from v1 |
+
+Show the verdict as a badge in the app list; re-probe when `versionCode` changes. This is what makes "common apps that allow control" concrete.
+
+**Candidate probe list (v1)** — a starting point, not a support commitment:
+
+| Category | Candidates | Notes |
+|---|---|---|
+| Messaging | WhatsApp, Telegram, Signal | Use a dedicated test account; UI automation can get consumer accounts flagged |
+| E-commerce | Flipkart, Amazon India, Meesho, Myntra | Usually rich trees; good first targets |
+| Food / travel | Swiggy, Zomato, Ola, Uber, IRCTC Rail Connect | Good trees; stop before payment confirmation |
+| Payments | Google Pay, PhonePe, Paytm | Probe only; many will be `blocked` or `partial` |
+| Utilities | Chrome, Google Maps, YouTube, Settings | Good for demos and selector practice |
+
+Probe 5–8 apps first. Add an app only when it comes back `controllable`.
 
 ### 3.4 Snapshot: screenshot + hotspots
 
@@ -186,6 +239,7 @@ fun collect(node: AccessibilityNodeInfo?, out: MutableList<Hotspot>, depth: Int 
 - Use `getRootInActiveWindow(FLAG_PREFETCH_DESCENDANTS_HYBRID)` on API 33+.
 - Run the walk off the main thread; bound depth and node count.
 - **Never store `AccessibilityNodeInfo` references in a snapshot.** Store selectors and bounds; re-resolve on every action.
+- With no test tags, selectors fall back to `viewId` (when the app exposes one), `text`, `contentDescription`, and bounds. Prefer text/description over bounds; pin macros to `appVersionCode`.
 
 **Numbering:**
 
@@ -237,7 +291,7 @@ class OtpNotificationListener : NotificationListenerService() {
 
 **SMS:**
 
-- **Own apps:** use the **SMS Retriever API** — no `READ_SMS` permission. The SMS must be ≤140 bytes, contain the 11-character app-signature hash, and arrive within 5 minutes. This is the cleanest path because you control the sender.
+- **SMS Retriever API** — only works for your own apps (the SMS must contain your app-signature hash, be ≤140 bytes, and arrive within 5 minutes). Not usable for third-party apps.
 - **Fallback:** `READ_SMS` with a sender allowlist. Internal-only; avoid if possible.
 
 **Human fallback:**
@@ -251,6 +305,8 @@ class OtpNotificationListener : NotificationListenerService() {
 - Redact `setText` values when the target is a password/OTP field.
 - Send only `otpReceived` metadata (source, timestamp) to the server, never the value.
 - Treat OTPs as credentials: memory only, single use, short TTL.
+
+**v1 caution:** with third-party apps there is no sandbox OTP. Prefer already-logged-in devices, use the human fallback for login OTPs, and never automate real OTPs for apps you do not own.
 
 ---
 
@@ -320,7 +376,9 @@ Every mutating step should have an `expect`. If it has none, the engine marks it
 
 Priority: `viewId` → `text`/`textContains`/`regex` → `contentDescription` → `hint` → relative position → bounds (last resort) → OCR (not in v1).
 
-**For your own apps:** add stable test tags. For Compose, `Modifier.testTag("login.submit")` plus `Modifier.semantics { testTagsAsResourceId = true }` exposes them as `viewIdResourceName`. For Views, set `android:id` or `View.setTag(R.id.test_tag, ...)`. This single change makes macros dramatically more reliable.
+**If/when own apps are added:** stable test tags are the biggest reliability lever. For Compose, `Modifier.testTag("login.submit")` plus `Modifier.semantics { testTagsAsResourceId = true }` exposes them as `viewIdResourceName`. For Views, set `android:id` or a test tag.
+
+**For v1's third-party apps:** there are no test tags. Rely on `viewId` where the app exposes one, then `text`/`contentDescription`, then bounds. Pin macros to `appVersionCode`; re-probe and dry-run after updates.
 
 ### 4.4 Execution
 
@@ -331,6 +389,7 @@ Priority: `viewId` → `text`/`textContains`/`regex` → `contentDescription` �
 - **Max runtime** per run (default 5 min) and a **kill switch** in the panel and on the notification.
 - One run per device at a time (lease). A second admin must explicitly take over.
 - `dryRun`: resolve every selector and screenshot, but do not tap.
+- **No real transactions in v1.** For payment flows, stop at the review screen and require `requiresConfirmation`; do not press the final "Pay" button. Test against a sandbox if one becomes available.
 
 ### 4.5 Recording
 
@@ -342,9 +401,9 @@ Record a human performing the task, then edit the draft.
 | `TYPE_VIEW_TEXT_CHANGED` | `setText` (debounced, final value) |
 | `TYPE_VIEW_SCROLLED` | `scroll` |
 | `TYPE_WINDOW_STATE_CHANGED` | `waitFor` + package/activity context |
-| `onKeyEvent` (hardware keys) | `key` / `setText`, when key filtering is enabled |
+| Screen/app context | package, activity, screen size, and timestamp attached to each step |
 
-**Hardware keys:** declare `android:canRequestFilterKeyEvents="true"` and `flagRequestFilterKeyEvents`; enable filtering only while recording. The service receives events before the app, may not see them in secure fields, and should return `false` to let them through. This is a sensitive capability — show a clear indicator while recording.
+**v1 scope:** taps, text, scroll, and screen/app context. Hardware-key capture (`canRequestFilterKeyEvents`) is deferred: it is a sensitive capability, may miss secure fields, and is not needed for the first version.
 
 **Limits:** raw swipe traces are not observable through accessibility. Record scrolls where `TYPE_VIEW_SCROLLED` fires; otherwise add swipes manually. A transparent overlay could capture touches but would consume them, so it is not used.
 
@@ -359,7 +418,7 @@ For 1–5 devices, keep it boring:
 - **One Node/TypeScript process.** Fastify or NestJS. TypeScript shared with the web panel.
 - **SQLite** (better-sqlite3) is sufficient; Postgres if you prefer. No Redis.
 - **Presence** in memory + `devices.last_seen`.
-- **Queue:** a `runs` table with `status = queued` and a worker loop. No BullMQ/Redis.
+- **On-demand only:** the admin starts a run; if the device is offline, reject with `device_offline` (no queue or cron in v1). Keep the `runs` table for history.
 - **Snapshots:** local disk (`/data/snapshots/<device>/<run>/<step>.webp`), with an `expires_at` and a daily cleanup job.
 - **Secrets:** encrypted at rest with a master key from env/KMS; `secretRef` in macros, never values.
 - **Deploy:** Docker Compose on one VPS, or a small internal machine over Tailscale.
@@ -382,7 +441,7 @@ macros(id, name, app_package, app_version_code, current_rev, params_json,
 macro_revs(macro_id, rev, steps_json, created_by, created_at)
 
 macro_runs(id, macro_id, device_id, admin_id, status, params_json,
-           queued_at, started_at, finished_at, error)
+           requested_at, started_at, finished_at, error)
 macro_run_steps(run_id, i, op, status, ms, snapshot_id, error, expect_ok)
 
 secrets(id, name, ciphertext, created_by, rotated_at)
@@ -391,7 +450,7 @@ admins(id, email, password_hash, totp_secret, role)
 audit(id, admin_id, device_id, action, detail_json, ts)
 ```
 
-Run statuses: `queued`, `running`, `success`, `failed`, `unverified`, `cancelled`, `preflight_failed`, `device_offline`.
+Run statuses: `running`, `success`, `failed`, `unverified`, `cancelled`, `preflight_failed`, `device_offline`.
 
 ### Run report (the actual product)
 
@@ -433,7 +492,7 @@ One WebSocket. JSON control; binary frames for images (or an HTTP URL). Every co
 ```jsonc
 // device → server
 { "t": "hello", "deviceId": "…", "protocolVersion": 1, "agent": "1.0.0",
-  "android": 34, "capabilities": ["screenshot","otp.notification","otp.sms","keyfilter"] }
+  "android": 34, "capabilities": ["screenshot","otp.notification","otp.sms"] }
 { "t": "state", "seq": 41, "online": true, "screenOn": true, "locked": false,
   "secureLock": false, "battery": 87, "charging": true,
   "a11y": true, "notifAccess": true, "foregroundApp": "com.acme.bank" }
@@ -473,7 +532,7 @@ Rules:
 
 ## 8. Security and privacy
 
-Even internal, this system can move money and read OTPs.
+Even internal, this system can read OTPs and drive sensitive apps.
 
 - **Network:** Tailscale/WireGuard; WSS with TLS. No public exposure unless necessary.
 - **Device enrollment:** install → server URL + one-time enrollment code (or QR) → device appears as `pending` → admin approves → token stored in `EncryptedSharedPreferences`. Tokens rotate on re-enroll.
@@ -483,7 +542,7 @@ Even internal, this system can move money and read OTPs.
 - **OTP:** memory only, TTL 5 min, single use; no DB, no logs, no screenshots on secret steps.
 - **Screenshots:** may contain PII/balances; encrypt at rest, restrict access, retention (e.g., 30 days), delete on request.
 - **Audit:** who ran what on which device, params (redacted), result, screenshots.
-- **Package allowlist:** only bank/messaging/settings packages can be controlled.
+- **Package allowlist:** only probed/allowlisted packages can be controlled.
 - **Kill switch:** panel + notification; stops the run and disconnects.
 - **No hidden mode:** persistent notification while connected; "remote control active" indicator.
 - **Sideload caveat (Android 13+):** enable Accessibility via *App info → ⋮ → Allow restricted settings*; document it in onboarding.
@@ -494,18 +553,19 @@ Even internal, this system can move money and read OTPs.
 
 | Limitation | Impact | Mitigation |
 |---|---|---|
-| Own apps must not set `FLAG_SECURE` / `accessibilityDataSensitive` in the test build | Screenshots/tree empty | Make it a build-config requirement; test with the exact build |
-| Third-party banking hides UI / blocks screenshots | Cannot control | Out of scope; official APIs later |
-| `accessibilityDataSensitive` (Android 14+) | Empty tree, blocked `dispatchGesture` on 16+ | Use only builds without the flag |
+| App hides UI (`accessibilityDataSensitive`) or blocks screenshots (`FLAG_SECURE`) | Empty tree / `SECURE_WINDOW` | Probe first; exclude `blocked` apps |
+| No test tags in third-party apps | Selectors are fragile | Prefer `viewId`/text/description; pin `appVersionCode`; dry-run after updates |
+| Third-party apps change their UI | Macros break | Re-probe on update; assertions; repair in assist console |
+| Real OTPs on third-party apps | Login cannot be automated safely | Use already-logged-in devices; human fallback; never automate OTPs for apps you don't own |
+| Payment confirmation | Risk of real money movement | Stop before the final confirm; `requiresConfirmation`; sandbox when available |
 | Screen locked / asleep | Screenshot fails, input stops | Stay-awake + no lock; Device Owner `setKeyguardDisabled`; preflight |
 | Secure PIN pads / biometrics | Cannot automate | Human step or app test hook |
 | Empty tree (games/canvas) | No hotspots | Grid fallback; not a v1 target |
 | OTP latency / listener misses | Run times out | Ring buffer, `waitForOtp` timeout, human fallback |
-| SMS Retriever constraints | Only ≤140-byte, hash-tagged SMS within 5 min | Own apps format the SMS; otherwise notification listener |
+| SMS Retriever constraints | Only ≤140-byte, hash-tagged SMS within 5 min | Works only for own apps; otherwise notification listener |
 | Notification access revoked | OTP unavailable | Preflight check; human fallback |
-| Macro breaks on app update | Failed run | Stable test tags, `appVersionCode` pin, assertions, dry run, repair in assist console |
+| Macro breaks on app update | Failed run | Re-probe, `appVersionCode` pin, assertions, dry run, repair in assist console |
 | Recorder can't capture raw swipes | Draft missing gestures | Record scrolls; add swipes manually |
-| Hardware key filtering may miss secure fields | Incomplete key recording | Record taps/text; edit manually |
 | OEM battery killers | Agent dies | Battery-optimization exemption, `specialUse` FGS, MDM |
 | Device offline mid-run | Lost report | On-device buffer + `seq` resume; idempotent `runId` |
 | Multi-window | Ambiguous coords | Capture full display; document single-window |
@@ -519,15 +579,15 @@ Even internal, this system can move money and read OTPs.
 
 | Phase | Deliverable | Effort (1–2 devs) |
 |---|---|---|
-| **0. Spike** | Inventory, launch, snapshot + hotspot dump, device-state banner on 2 devices | 3–5 days |
+| **0. Spike** | Inventory, launch, snapshot + hotspot dump, device-state banner, capability probe over 5–8 candidate apps | 4–6 days |
 | **1. Console** | WSS relay + run dashboard shell + numbered snapshot + tap/text/scroll/back + grid | 2 weeks |
 | **2. Engine** | Macro schema, runner, preflight, assertions, `tapIfExists`/`waitForIdle`, run report, offline buffer | 2–3 weeks |
 | **3. OTP + record** | Notification/SMS OTP, human fallback, secrets vault, recorder + editor, parameters | 2 weeks |
 | **4. Harden** | Tailscale, enrollment, retention, alerts, OEM matrix, CI, observability | 1–2 weeks |
 
-**Total: ~7–9 weeks** for a solid v1 on 1–5 devices.
+**Total: ~8–10 weeks** for a solid v1 on 1–5 devices.
 
-**Phase 0 exit criteria:** on two devices, list apps, launch one, capture a settled screenshot, and number ≥80% of visible controls correctly. If that works, the rest is engineering.
+**Phase 0 exit criteria:** on two devices, list apps, launch one, capture a settled screenshot, and classify 5–8 candidate apps as `controllable` / `partial` / `blocked`. If that works, the rest is engineering.
 
 ---
 
@@ -540,10 +600,10 @@ RC-app/
 │   ├── accessibility/        # service, tree walker, screenshots, actions
 │   ├── inventory/            # LauncherApps, icons
 │   ├── macros/               # engine, selectors, preflight
-│   ├── recorder/             # event timeline, key filtering
+│   ├── recorder/             # event timeline, screen/app context
 │   ├── otp/                  # notification listener, SMS Retriever, buffer
 │   └── transport/            # WSS client, reconnect, buffer
-├── server/                   # Node/TS: devices, runs, macros, secrets, queue
+├── server/                   # Node/TS: devices, runs, macros, secrets, audit
 ├── web/                      # Next.js: dashboard, report, editor, assist
 ├── shared/                   # JSON Schema + generated TS/Kotlin models
 ├── infra/                    # docker-compose, Tailscale notes, retention job
@@ -554,21 +614,20 @@ RC-app/
 
 ## 12. Open questions
 
-1. **Own apps:** Compose or Views? Can the app teams add stable `testTag`/`viewId` values? (This is the single biggest reliability lever.)
-2. **Environment:** sandbox/test accounts and test OTPs available? (Strongly recommended over real money.)
-3. **OTP:** what format do the SMS and notifications use? Can the apps expose a known test OTP or notification?
-4. **Device control:** is Device Owner acceptable if needed for unlock/keep-awake, or do you prefer physically unlocked, charging devices?
-5. **Recording scope:** taps/text/scroll only, or also hardware key events (requires key filtering)?
-6. **Schedule:** on-demand only, or scheduled/recurring runs?
-7. **Failure notifications:** email, Slack, Telegram, or just the dashboard?
-8. **Retention:** how long should run screenshots be kept?
+1. **App set:** which 5–8 common Indian apps should the probe start with? (Messaging, e-commerce, food delivery, travel, payments.)
+2. **OTP testing:** are real OTPs acceptable for login, or should every OTP step use the human fallback?
+3. **Messaging accounts:** is a dedicated test account/number available? UI automation can get consumer accounts flagged.
+4. **Payments:** confirm that v1 stops at the review screen and never presses "Pay."
+5. **Device Owner:** QR provisioning or one-time `adb dpm set-device-owner`?
+6. **Failure alerts:** dashboard only, or email/Slack/Telegram?
+7. **Retention:** how long should run screenshots be kept?
 
 ---
 
 ## 13. Summary
 
-- **Own apps + Android 13+ + 1–5 devices** turns this into a tractable internal tool.
-- **Fully automatic** makes the **macro engine + run report** the product; the numbered console is the debugger.
-- **OTP** is the riskiest integration: prefer test hooks, then notification listener, then SMS Retriever, then human fallback.
+- **A probed app set + Android 13+ + 1–5 devices** turns this into a tractable internal tool.
+- **Fully automatic, on demand** makes the **macro engine + run report** the product; the numbered console is the debugger.
+- **OTP** is the riskiest integration: notification listener first, human fallback by default; SMS Retriever only for your own apps.
 - **Keep the devices unlocked and awake** before writing more code; treat lock/sleep as the top operational failure.
-- **Stable test tags in your own apps** will do more for reliability than any clever selector heuristic.
+- **Without test tags, text/description selectors and `appVersionCode` pinning** are the reliability levers. The capability probe tells you which apps are worth automating.

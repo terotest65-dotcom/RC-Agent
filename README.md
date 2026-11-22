@@ -9,10 +9,10 @@ A numbered-screenshot console is available for debugging and repair.
 
 ## Scope (v1)
 
-- **Targets:** our own banking/payment apps that permit screenshots and control,
-  messaging/social apps via UI automation, and device settings.
+- **Targets:** a curated set of common Indian apps that pass a **capability probe**
+  (screenshots work + a usable accessibility tree). No real payments in v1.
 - **Devices:** 1–5 remote phones, Android 13+.
-- **Mode:** fully automatic; human fallback only for OTPs and macro repair.
+- **Mode:** fully automatic and on demand; human fallback for OTPs and macro repair.
 - **OTP:** SMS or notification, with manual input fallback.
 - **Admin:** web panel only; no live video (screenshot per step).
 
@@ -22,9 +22,9 @@ A numbered-screenshot console is available for debugging and repair.
 |---|---|
 | Android agent | Kotlin — `AccessibilityService` tree + `takeScreenshot` + actions |
 | Execution | On-device macro engine with preflight, assertions, offline buffering |
-| Recording | Capture user taps/text/scroll/window changes; hardware keys where possible |
+| Recording | Capture taps/text/scroll + screen/app context; no hardware keys in v1 |
 | Transport | Single WebSocket relay (WSS); `specialUse` foreground service |
-| Backend | Node.js/TypeScript + SQLite (or Postgres); one process |
+| Backend | Node.js/TypeScript + SQLite (or Postgres); one process, on demand |
 | Admin | Next.js — run dashboard, report, macro editor, assist console |
 
 Optional later: an ADB-based lab controller for devices on a bench.
@@ -38,7 +38,7 @@ Optional later: an ADB-based lab controller for devices on a bench.
 
 ## Getting started
 
-Nothing is scaffolded yet. Start with **Phase 0**: list apps, launch one, and
-capture a settled screenshot with a hotspot map on two real devices. The
-biggest reliability lever is adding stable `testTag`/`viewId` values to our own
-apps.
+Nothing is scaffolded yet. Start with **Phase 0**: list apps, launch one, capture
+a settled screenshot with a hotspot map, and run the **capability probe** over a
+shortlist of candidate apps on two real devices. The probe tells you which apps
+are worth automating — don't guess from the app store listing.
