@@ -284,6 +284,13 @@ export default function App() {
             prev.map((d) => (d.id === msg.deviceId ? { ...d, state: msg.state } : d))
           )
           break
+        case 'profile':
+          setDevices((prev) =>
+            prev.map((d) =>
+              d.id === msg.deviceId ? { ...d, profile: msg.profile } : d
+            )
+          )
+          break
         case 'telephony':
           setDevices((prev) =>
             prev.map((d) =>
@@ -808,7 +815,9 @@ export default function App() {
                   <strong>{device.name}</strong>
                 </span>
                 <span className="device-card-meta">
-                  {device.model ?? device.id}
+                  {device.profile
+                    ? `${device.profile.name} · ${device.profile.phone}`
+                    : device.model ?? device.id}
                 </span>
                 <span className="device-card-foot">
                   {device.online ? 'Online' : 'Offline'} ·{' '}
@@ -894,6 +903,22 @@ export default function App() {
                   {selected.name} · Android {selected.android ?? '?'} ·{' '}
                   <span className="mono">{selected.id}</span>
                 </p>
+                {selected.profile && (
+                  <p className="operator-line">
+                    <Icon name="check" size={14} />
+                    Registered to <strong>{selected.profile.name}</strong>
+                    <span>·</span>
+                    {selected.profile.phone}
+                    <span
+                      className="operator-consent"
+                      title={`Consent recorded ${new Date(
+                        selected.profile.consentAt
+                      ).toLocaleString()}`}
+                    >
+                      Consent accepted
+                    </span>
+                  </p>
+                )}
               </div>
               <div className="topbar-actions">
                 <button

@@ -53,6 +53,12 @@ and IBM Plex Mono.
 - capability probing still exists in the agent and relay, but the panel no
   longer exposes a probe tab.
 
+## Registration
+
+The agent sends the operator name, phone, and consent time from its first-run
+WebView form. The admin shows **Registered to <name> · <phone>** beneath the
+device title. There is no separate login; the profile is informational.
+
 ## Phone surface
 
 - **Lines** — SIM cards with number, carrier, slot, country/MCC-MNC, state,

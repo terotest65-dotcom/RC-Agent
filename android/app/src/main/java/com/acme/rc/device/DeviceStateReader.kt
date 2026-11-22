@@ -83,10 +83,16 @@ object DeviceStateReader {
         }
     }
 
-    fun openAccessibilitySettings(context: Context) = open(
-        context,
-        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-    )
+    fun openAccessibilitySettings(context: Context) {
+        // Best-effort deep link to this service's detail page. It is handled by
+        // AOSP Settings and many OEMs; fall back to the accessibility list.
+        val component = ComponentName(context, RcAccessibilityService::class.java)
+        val details = Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+            .putExtra(Intent.EXTRA_COMPONENT_NAME, component)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (start(context, details)) return
+        open(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
 
     fun openNotificationListenerSettings(context: Context) = open(
         context,
@@ -103,11 +109,14 @@ object DeviceStateReader {
         Intent(Settings.ACTION_SECURITY_SETTINGS)
     )
 
+    private fun start(context: Context, intent: Intent): Boolean = try {
+        context.startActivity(intent)
+        true
+    } catch (_: Throwable) {
+        false
+    }
+
     private fun open(context: Context, intent: Intent) {
-        try {
-            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (_: Throwable) {
-            // Some OEMs remove the settings activity; ignore for Phase 0.
-        }
+        start(context, intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }

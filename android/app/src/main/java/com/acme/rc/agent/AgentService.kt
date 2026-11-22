@@ -67,6 +67,7 @@ class AgentService : Service() {
     companion object {
         private const val TAG = "RcAgentService"
         const val ACTION_STOP = "com.acme.rc.agent.STOP"
+        const val ACTION_SEND_PROFILE = "com.acme.rc.agent.SEND_PROFILE"
         private const val CHANNEL_ID = "rc_agent"
         private const val NOTIFICATION_ID = 41
         private const val MASK_CHARS = "•●○◦∙·⋅▪▫■□◆◇‣⁃⦁⦿⊙◉*"
@@ -125,6 +126,11 @@ class AgentService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_SEND_PROFILE) {
+            sendProfile()
+            return START_STICKY
+        }
+
         if (intent?.action == ACTION_STOP) {
             shouldReconnect = false
             recording = false
@@ -195,6 +201,7 @@ class AgentService : Service() {
                 sendApps(webSocket)
                 sendState(webSocket)
                 sendTelephony()
+                sendProfile()
             }
         }
 
@@ -605,6 +612,12 @@ class AgentService : Service() {
         if (error != null) json.put("error", error)
         if (detail != null) json.put("detail", detail)
         socket?.send(json.toString())
+    }
+
+    private fun sendProfile() {
+        val ws = socket ?: return
+        val profile = AgentConfig.profileJson(this) ?: return
+        ws.send(JSONObject().put("t", "profile").put("profile", profile).toString())
     }
 
     private fun sendTelephony() {

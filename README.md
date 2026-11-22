@@ -52,6 +52,13 @@ settled screenshot, and run the **capability probe** over the six v1 apps. The
 probe tells you which apps are worth automating — don't guess from the app store
 listing.
 
+### Device enrollment
+
+The first launch opens a local WebView form asking for the operator's name,
+phone number, and consent. The details are stored on the device and sent to the
+admin console when the agent connects; the admin shows them as **Registered
+to …** under the device title. The form can be reopened from **Edit profile**.
+
 ### Phase 1 relay + web console
 
 ```bash

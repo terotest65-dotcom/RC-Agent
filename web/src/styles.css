@@ -564,6 +564,33 @@ code {
   font-size: 12px;
 }
 
+.operator-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 0;
+  color: var(--success-text);
+  font-size: 12.5px;
+}
+
+.operator-line strong {
+  font-weight: 600;
+}
+
+.operator-line > span:not(.operator-consent) {
+  color: var(--border);
+}
+
+.operator-consent {
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--success-bg);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;

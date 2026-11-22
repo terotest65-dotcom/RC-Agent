@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>RC Agent setup</title>
+    <style>
+      :root {
+        --bg: #f5f7fb;
+        --card: #ffffff;
+        --ink: #101828;
+        --text: #344054;
+        --muted: #667085;
+        --line: #e4e7ec;
+        --primary: #2563eb;
+        --primary-strong: #1d4ed8;
+        --success: #067647;
+        --success-bg: #ecfdf3;
+        --danger: #b42318;
+        --danger-bg: #fef3f2;
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          'Helvetica Neue', Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .screen {
+        width: 100%;
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 26px 20px 40px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 28px;
+      }
+
+      .logo {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: var(--primary);
+        color: #fff;
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      .brand-copy {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.25;
+      }
+
+      .brand-copy strong {
+        font-size: 17px;
+        font-weight: 700;
+      }
+
+      .brand-copy span {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .card {
+        padding: 24px 20px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--card);
+        box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--primary);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: 28px;
+        font-weight: 750;
+        letter-spacing: -0.025em;
+        line-height: 1.15;
+      }
+
+      .lede {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.55;
+      }
+
+      .points {
+        display: grid;
+        gap: 10px;
+        margin: 20px 0 24px;
+        padding: 0;
+        list-style: none;
+      }
+
+      .points li {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        color: var(--text);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .point-icon {
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        flex: 0 0 22px;
+        margin-top: 1px;
+        border-radius: 50%;
+        background: var(--success-bg);
+        color: var(--success);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      form {
+        display: grid;
+        gap: 14px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      input[type='text'],
+      input[type='tel'] {
+        width: 100%;
+        height: 48px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--ink);
+        font-size: 16px;
+        outline: none;
+        transition:
+          border-color 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+
+      input::placeholder {
+        color: #98a2b3;
+      }
+
+      input[type='text']:focus,
+      input[type='tel']:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      }
+
+      .check {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px 13px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fafbfc;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 1.45;
+      }
+
+      .check input {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 20px;
+        margin: 0;
+        accent-color: var(--primary);
+      }
+
+      .check span {
+        color: var(--text);
+      }
+
+      .error {
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid #fecdca;
+        border-radius: 9px;
+        background: var(--danger-bg);
+        color: var(--danger);
+        font-size: 13px;
+      }
+
+      button {
+        width: 100%;
+        min-height: 48px;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        background: var(--primary);
+        color: #fff;
+        font-family: inherit;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition:
+          background 0.15s ease,
+          transform 0.1s ease;
+      }
+
+      button:active {
+        transform: translateY(1px);
+      }
+
+      button.primary:hover {
+        background: var(--primary-strong);
+      }
+
+      button.secondary {
+        border-color: var(--line);
+        background: #fff;
+        color: var(--text);
+      }
+
+      button.link {
+        min-height: 40px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      button.link:hover {
+        color: var(--text);
+      }
+
+      .footnote {
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .success {
+        display: grid;
+        gap: 16px;
+      }
+
+      .success-icon {
+        display: grid;
+        place-items: center;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: var(--success-bg);
+        color: var(--success);
+        font-size: 26px;
+        font-weight: 800;
+      }
+
+      .summary {
+        margin: 0;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fafbfc;
+        color: var(--text);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .next {
+        padding: 16px;
+        border: 1px solid #bfdbfe;
+        border-radius: 12px;
+        background: #eff6ff;
+      }
+
+      .next h2 {
+        margin: 0 0 6px;
+        color: var(--primary-strong);
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .next p {
+        margin: 0 0 12px;
+        color: #1e40af;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .next .hint {
+        margin: 10px 0 0;
+        color: #475467;
+        font-size: 12px;
+      }
+
+      .next button {
+        background: #fff;
+        border-color: #93c5fd;
+        color: var(--primary-strong);
+        font-size: 14px;
+      }
+
+      .next button:hover {
+        background: #dbeafe;
+      }
+
+      .success .primary {
+        background: var(--primary);
+        color: #fff;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="screen">
+      <header class="brand">
+        <div class="logo">RC</div>
+        <div class="brand-copy">
+          <strong>RC Agent</strong>
+          <span>Remote control · internal</span>
+        </div>
+      </header>
+
+      <section id="intro" class="card">
+        <p class="eyebrow">Device enrollment</p>
+        <h1>Set up this device for remote control.</h1>
+        <p class="lede">
+          RC Agent lets your team operate approved apps on this device, run
+          recorded macros, and handle OTPs and phone tasks from the admin
+          console. It is for authorized internal use only.
+        </p>
+
+        <ul class="points">
+          <li>
+            <span class="point-icon">✓</span>
+            <span>Control apps with screenshots and accessibility actions.</span>
+          </li>
+          <li>
+            <span class="point-icon">✓</span>
+            <span>Read notifications and SMS only when an OTP is needed.</span>
+          </li>
+          <li>
+            <span class="point-icon">✓</span>
+            <span>Every action is logged in the admin activity feed.</span>
+          </li>
+        </ul>
+
+        <form id="profile-form" novalidate>
+          <label for="name">
+            Your name
+            <input
+              id="name"
+              name="name"
+              type="text"
+              autocomplete="name"
+              placeholder="e.g. Ravi Kumar"
+              required
+            />
+          </label>
+
+          <label for="phone">
+            Phone number
+            <input
+              id="phone"
+              name="phone"
+              type="tel"
+              inputmode="tel"
+              autocomplete="tel"
+              placeholder="+91 98765 43210"
+              required
+            />
+          </label>
+
+          <label class="check" for="agree">
+            <input id="agree" name="agree" type="checkbox" />
+            <span>
+              I agree to use this device for authorized remote-control tasks.
+              I understand that screen content, notifications, SMS, and phone
+              data may be accessed by the admin console.
+            </span>
+          </label>
+
+          <p id="form-error" class="error" hidden></p>
+
+          <button id="submit" class="primary" type="submit">
+            Agree and continue
+          </button>
+          <button id="cancel" class="link" type="button" hidden>
+            Cancel
+          </button>
+        </form>
+
+        <p class="footnote">
+          Your details are saved on this device and sent to the admin console
+          when the agent connects.
+        </p>
+      </section>
+
+      <section id="success" class="card success" hidden>
+        <div class="success-icon">✓</div>
+        <div>
+          <p class="eyebrow">Registered</p>
+          <h1>You're all set.</h1>
+        </div>
+        <p id="summary" class="summary"></p>
+
+        <div class="next">
+          <h2>Enable accessibility</h2>
+          <p>
+            Android requires you to turn on RC Agent accessibility manually.
+            This is what lets the agent read the screen and tap for you.
+          </p>
+          <button id="open-accessibility" type="button">
+            Open accessibility settings
+          </button>
+          <p class="hint">
+            On Poco: Accessibility → Downloaded apps → RC Agent. If the app is
+            sideloaded, first allow restricted settings from App info → ⋮.
+          </p>
+        </div>
+
+        <button id="continue" class="primary" type="button">
+          Continue to device setup
+        </button>
+        <button id="edit" class="link" type="button">Edit my details</button>
+      </section>
+    </main>
+
+    <script>
+      (function () {
+        var bridge = window.RCAndroid || null
+        var profile = null
+        var intro = document.getElementById('intro')
+        var success = document.getElementById('success')
+        var form = document.getElementById('profile-form')
+        var nameInput = document.getElementById('name')
+        var phoneInput = document.getElementById('phone')
+        var agreeInput = document.getElementById('agree')
+        var errorBox = document.getElementById('form-error')
+        var cancelButton = document.getElementById('cancel')
+        var summary = document.getElementById('summary')
+
+        function normalizePhone(value) {
+          return String(value || '').replace(/[^\d+]/g, '')
+        }
+
+        function validPhone(value) {
+          var digits = normalizePhone(value).replace(/\D/g, '')
+          return digits.length >= 7 && digits.length <= 15
+        }
+
+        function readProfile() {
+          try {
+            if (bridge && bridge.getProfile) {
+              var raw = bridge.getProfile()
+              profile = raw ? JSON.parse(raw) : null
+              if (profile && !profile.name) profile = null
+            }
+          } catch (error) {
+            profile = null
+          }
+          if (profile) {
+            nameInput.value = profile.name || ''
+            phoneInput.value = profile.phone || ''
+            cancelButton.hidden = false
+          }
+        }
+
+        function showError(message) {
+          errorBox.textContent = message
+          errorBox.hidden = false
+        }
+
+        function clearError() {
+          errorBox.hidden = true
+        }
+
+        function showSuccess(name, phone) {
+          summary.textContent = name + ' · ' + phone
+          intro.hidden = true
+          success.hidden = false
+          window.scrollTo(0, 0)
+        }
+
+        form.addEventListener('submit', function (event) {
+          event.preventDefault()
+          clearError()
+          var name = nameInput.value.trim()
+          var phone = phoneInput.value.trim()
+
+          if (name.length < 2) {
+            showError('Enter your name.')
+            nameInput.focus()
+            return
+          }
+          if (!validPhone(phone)) {
+            showError('Enter a valid phone number.')
+            phoneInput.focus()
+            return
+          }
+          if (!agreeInput.checked) {
+            showError('Please accept the usage agreement.')
+            return
+          }
+          if (!bridge || !bridge.saveProfile) {
+            showError('Please open this form inside the RC Agent app.')
+            return
+          }
+
+          if (bridge.saveProfile(name, phone, true)) {
+            showSuccess(name, phone)
+          } else {
+            showError('Could not save your details. Please try again.')
+          }
+        })
+
+        document
+          .getElementById('open-accessibility')
+          .addEventListener('click', function () {
+            if (bridge && bridge.openAccessibility) bridge.openAccessibility()
+          })
+
+        document.getElementById('continue').addEventListener('click', function () {
+          if (bridge && bridge.continueToApp) bridge.continueToApp()
+        })
+
+        document.getElementById('edit').addEventListener('click', function () {
+          success.hidden = true
+          intro.hidden = false
+          clearError()
+          nameInput.focus()
+          window.scrollTo(0, 0)
+        })
+
+        cancelButton.addEventListener('click', function () {
+          if (bridge && bridge.continueToApp) bridge.continueToApp()
+        })
+
+        readProfile()
+      })()
+    </script>
+  </body>
+</html>

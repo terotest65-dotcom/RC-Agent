@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
@@ -38,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,10 +51,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.acme.rc.accessibility.RcAccessibilityService
 import com.acme.rc.agent.AgentConfig
 import com.acme.rc.agent.AgentConnection
@@ -65,6 +71,7 @@ import com.acme.rc.model.Element
 import com.acme.rc.model.ProbeResult
 import com.acme.rc.model.Snapshot
 import com.acme.rc.model.SnapshotStore
+import com.acme.rc.ui.OnboardingScreen
 import com.acme.rc.ui.SnapshotView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -74,17 +81,26 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.getInsetsController(window, window.decorView)
+            .isAppearanceLightStatusBars = true
+        WindowCompat.getInsetsController(window, window.decorView)
+            .isAppearanceLightNavigationBars = true
         setContent {
             RcTheme {
                 val scope = rememberCoroutineScope()
                 var apps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
                 var device by remember { mutableStateOf(DeviceStateReader.read(this@MainActivity)) }
+                var showOnboarding by remember {
+                    mutableStateOf(!AgentConfig.hasProfile(this@MainActivity))
+                }
+                var accessibilityPrompted by remember { mutableStateOf(false) }
+                var showAccessibilityDialog by remember { mutableStateOf(false) }
 
                 val permissions = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestMultiplePermissions()
                 ) { }
 
-                LaunchedEffect(Unit) {
+                LaunchedEffect(showOnboarding) {
                     val needed = mutableListOf<String>()
                     if (Build.VERSION.SDK_INT >= 33 &&
                         ContextCompat.checkSelfPermission(
@@ -114,10 +130,31 @@ class MainActivity : ComponentActivity() {
                             needed += permission
                         }
                     }
-                    if (needed.isNotEmpty()) {
+                    if (needed.isNotEmpty() && !showOnboarding) {
                         permissions.launch(needed.toTypedArray())
                     }
                     apps = AppInventory.list(this@MainActivity)
+                }
+
+                val lifecycleOwner = LocalLifecycleOwner.current
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) {
+                            device = DeviceStateReader.read(this@MainActivity)
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
+
+                LaunchedEffect(showOnboarding, device.accessibilityEnabled) {
+                    if (!showOnboarding &&
+                        !device.accessibilityEnabled &&
+                        !accessibilityPrompted
+                    ) {
+                        accessibilityPrompted = true
+                        showAccessibilityDialog = true
+                    }
                 }
 
                 fun refreshDevice() {
@@ -264,13 +301,49 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                if (showOnboarding) {
+                    OnboardingScreen(
+                        onSave = { name, phone ->
+                            val digits = phone.count { it.isDigit() }
+                            if (name.length < 2 || digits !in 7..15) {
+                                false
+                            } else {
+                                AgentConfig.saveProfile(this@MainActivity, name, phone)
+                                if (AgentConnection.connected) {
+                                    startService(
+                                        Intent(
+                                            this@MainActivity,
+                                            AgentService::class.java
+                                        ).setAction(AgentService.ACTION_SEND_PROFILE)
+                                    )
+                                }
+                                true
+                            }
+                        },
+                        onContinue = {
+                            showOnboarding = false
+                            device = DeviceStateReader.read(this@MainActivity)
+                            scope.launch {
+                                apps = AppInventory.list(this@MainActivity)
+                            }
+                        },
+                        onOpenAccessibility = {
+                            DeviceStateReader.openAccessibilitySettings(this@MainActivity)
+                        }
+                    )
+                    return@RcTheme
+                }
+
                 Scaffold(
                     topBar = {
                         TopAppBar(
                             title = {
-                                Text("RC Agent · Phase 0", fontWeight = FontWeight.SemiBold)
+                                Text("RC Agent", fontWeight = FontWeight.SemiBold)
                             },
                             actions = {
+                                TextButton(onClick = {
+                                    showOnboarding = true
+                                }) { Text("Edit profile") }
                                 TextButton(onClick = {
                                     scope.launch {
                                         apps = AppInventory.list(this@MainActivity)
@@ -359,6 +432,36 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                }
+
+                if (showAccessibilityDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showAccessibilityDialog = false },
+                        title = { Text("Enable accessibility") },
+                        text = {
+                            Text(
+                                "RC Agent needs accessibility to read the screen and " +
+                                    "perform taps.\n\nOn Poco: Settings → Accessibility → " +
+                                    "Downloaded apps → RC Agent. On Android 13+, if the app " +
+                                    "is sideloaded, first open App info → ⋮ → Allow " +
+                                    "restricted settings.\n\nThe button below opens the " +
+                                    "closest settings page your phone supports."
+                            )
+                        },
+                        confirmButton = {
+                            Button(onClick = {
+                                showAccessibilityDialog = false
+                                DeviceStateReader.openAccessibilitySettings(
+                                    this@MainActivity
+                                )
+                            }) { Text("Open settings") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showAccessibilityDialog = false }) {
+                                Text("Not now")
+                            }
+                        }
+                    )
                 }
             }
         }

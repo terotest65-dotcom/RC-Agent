@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { randomUUID, createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto'
 import { WebSocketServer, type WebSocket as WsSocket } from 'ws'
 import type {
+  AgentProfile,
   AppInfo,
   DeviceState,
   DeviceSummary,
@@ -57,6 +58,7 @@ interface DeviceRecord {
   state?: DeviceState
   probes: Record<string, ProbeResult>
   telephony?: TelephonyInfo
+  profile?: AgentProfile
 }
 
 interface RecordingSession {
@@ -177,7 +179,8 @@ function summary(device: DeviceRecord): DeviceSummary {
     apps: device.apps,
     state: device.state,
     probes: device.probes,
-    telephony: device.telephony
+    telephony: device.telephony,
+    profile: device.profile
   }
 }
 
@@ -531,6 +534,19 @@ wss.on('connection', (ws) => {
         case 'actionResult':
           broadcast({ t: 'actionResult', deviceId, ...msg })
           break
+        case 'profile': {
+          const profile = msg.profile as AgentProfile | undefined
+          if (profile?.name && profile?.phone) {
+            device.profile = {
+              name: String(profile.name),
+              phone: String(profile.phone),
+              consentAt: Number(profile.consentAt) || Date.now(),
+              termsVersion: Number(profile.termsVersion) || 1
+            }
+            broadcast({ t: 'profile', deviceId, profile: device.profile })
+          }
+          break
+        }
         case 'telephony': {
           const telephony: TelephonyInfo = {
             sims: Array.isArray(msg.sims) ? msg.sims : [],

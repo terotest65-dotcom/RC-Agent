@@ -36,6 +36,13 @@ export interface DeviceState {
   package?: string | null
 }
 
+export interface AgentProfile {
+  name: string
+  phone: string
+  consentAt: number
+  termsVersion: number
+}
+
 export interface SimPermissions {
   readSms: boolean
   sendSms: boolean
@@ -139,6 +146,7 @@ export interface DeviceSummary {
   state?: DeviceState
   probes?: Record<string, ProbeResult>
   telephony?: TelephonyInfo
+  profile?: AgentProfile
 }
 
 export interface DevicesMessage {
@@ -354,6 +362,12 @@ export interface SecretSavedMessage {
   secret: SecretInfo
 }
 
+export interface ProfileMessage {
+  t: 'profile'
+  deviceId: string
+  profile: AgentProfile
+}
+
 export interface TelephonyMessage extends TelephonyInfo {
   t: 'telephony'
   deviceId: string
@@ -406,6 +420,7 @@ export type ServerMessage =
   | SecretsMessage
   | SecretSavedMessage
   | TelephonyMessage
+  | ProfileMessage
   | SmsListMessage
   | SmsSendResultMessage
   | UssdResultMessage

@@ -62,6 +62,22 @@ adb shell dpm set-device-owner com.acme.rc/.admin.RcDeviceAdminReceiver
 Without Device Owner the app still works; it only loses the automatic
 keyguard disable and keep-awake helpers.
 
+## First-run enrollment
+
+The first launch shows a local WebView (`assets/onboarding.html`) with the
+agent description, operator name, phone number, and a required consent
+checkbox. On submit, the details are saved in `SharedPreferences` and sent to
+the relay as a `profile` message; the admin panel displays them under the
+device name. **Edit profile** in the app reopens the prefilled form.
+
+After enrollment, the app asks for the optional SMS/phone permissions and
+shows an **Enable accessibility** dialog if the service is off. Use **Open
+settings** to jump to the accessibility screen. The app first tries
+`android.settings.ACCESSIBILITY_DETAILS_SETTINGS` with the service component
+(works on many builds) and falls back to the standard accessibility page. On
+Poco/MIUI the service is listed under **Downloaded apps**; if the app was
+sideloaded, allow restricted settings from **App info → ⋮** first.
+
 ## Wake and unlock
 
 - **Wake** uses a bright-screen wake lock with `ACQUIRE_CAUSES_WAKEUP`
