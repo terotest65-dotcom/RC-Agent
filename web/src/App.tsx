@@ -1849,9 +1849,114 @@ function PhonePanel({
       <section className="panel">
         <div className="panel-head">
           <div>
+            <h2>Call forwarding</h2>
+            <span className="panel-sub">carrier USSD · may prompt on device</span>
+          </div>
+        </div>
+
+        {notice?.scope === 'forward' && (
+          <NoticeBar notice={notice} onDismiss={onDismissNotice} />
+        )}
+
+        <div className="forward-form">
+          <label className="field">
+            <span>Line</span>
+            <select
+              value={lineValue(forwardSubId)}
+              onChange={(event) => setForwardSubId(event.target.value)}
+              disabled={sims.length === 0}
+            >
+              {sims.map((sim) => (
+                <option key={sim.subId} value={sim.subId}>
+                  SIM {sim.slotIndex + 1} · {sim.carrierName ?? 'carrier'}
+                </option>
+              ))}
+              {sims.length === 0 && <option value="">No line</option>}
+            </select>
+          </label>
+          <label className="field">
+            <span>Rule</span>
+            <select
+              value={forwardMode}
+              onChange={(event) =>
+                setForwardMode(event.target.value as ForwardMode)
+              }
+            >
+              {Object.entries(FORWARD_MODES).map(([key, value]) => (
+                <option key={key} value={key}>
+                  {value.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Forward to</span>
+            <input
+              value={forwardNumber}
+              onChange={(event) => setForwardNumber(event.target.value)}
+              placeholder="+91…"
+              inputMode="tel"
+            />
+          </label>
+          <div className="forward-actions">
+            <button
+              className="btn btn-ink"
+              disabled={!enableCode || forwardPending}
+              onClick={() => sendPreset('enable')}
+            >
+              Enable
+            </button>
+            <button
+              className="btn btn-outline"
+              disabled={forwardPending}
+              onClick={() => sendPreset('disable')}
+            >
+              Disable
+            </button>
+            <button
+              className="btn btn-ghost"
+              disabled={forwardPending}
+              onClick={() => sendPreset('status')}
+            >
+              Status
+            </button>
+          </div>
+        </div>
+
+        <div className="forward-preview">
+          <span className="micro">Preset code</span>
+          <code>{enableCode || `${preset.enable}<number>#`}</code>
+          <span className="micro">Raw USSD</span>
+          <div className="raw-ussd">
+            <input
+              value={rawCode}
+              onChange={(event) => setRawCode(event.target.value)}
+              placeholder="*21*…"
+              inputMode="tel"
+            />
+            <button
+              className="btn btn-outline btn-small"
+              disabled={!rawCode.trim() || forwardPending}
+              onClick={() => onCallForward(rawCode.trim(), activeForwardSub)}
+            >
+              {forwardPending ? 'Waiting…' : 'Send code'}
+            </button>
+          </div>
+        </div>
+
+        <p className="hint">
+          Forwarding uses the carrier’s USSD service; the exact codes and
+          whether the network allows them vary by operator. The agent sends the
+          code and reports the network response. Some carriers require the
+          device screen to confirm.
+        </p>
+      </section>
+      <section className="panel">
+        <div className="panel-head">
+          <div>
             <h2>Messages</h2>
             <span className="panel-sub">
-              {loading ? 'reading inbox…' : `${messages.length} recent`}
+              {loading ? 'reading inbox…' : `${messages.length} recent · auto-updates`}
             </span>
           </div>
           <div className="panel-actions">
@@ -1957,111 +2062,6 @@ function PhonePanel({
         </div>
       </section>
 
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <h2>Call forwarding</h2>
-            <span className="panel-sub">carrier USSD · may prompt on device</span>
-          </div>
-        </div>
-
-        {notice?.scope === 'forward' && (
-          <NoticeBar notice={notice} onDismiss={onDismissNotice} />
-        )}
-
-        <div className="forward-form">
-          <label className="field">
-            <span>Line</span>
-            <select
-              value={lineValue(forwardSubId)}
-              onChange={(event) => setForwardSubId(event.target.value)}
-              disabled={sims.length === 0}
-            >
-              {sims.map((sim) => (
-                <option key={sim.subId} value={sim.subId}>
-                  SIM {sim.slotIndex + 1} · {sim.carrierName ?? 'carrier'}
-                </option>
-              ))}
-              {sims.length === 0 && <option value="">No line</option>}
-            </select>
-          </label>
-          <label className="field">
-            <span>Rule</span>
-            <select
-              value={forwardMode}
-              onChange={(event) =>
-                setForwardMode(event.target.value as ForwardMode)
-              }
-            >
-              {Object.entries(FORWARD_MODES).map(([key, value]) => (
-                <option key={key} value={key}>
-                  {value.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>Forward to</span>
-            <input
-              value={forwardNumber}
-              onChange={(event) => setForwardNumber(event.target.value)}
-              placeholder="+91…"
-              inputMode="tel"
-            />
-          </label>
-          <div className="forward-actions">
-            <button
-              className="btn btn-ink"
-              disabled={!enableCode || forwardPending}
-              onClick={() => sendPreset('enable')}
-            >
-              Enable
-            </button>
-            <button
-              className="btn btn-outline"
-              disabled={forwardPending}
-              onClick={() => sendPreset('disable')}
-            >
-              Disable
-            </button>
-            <button
-              className="btn btn-ghost"
-              disabled={forwardPending}
-              onClick={() => sendPreset('status')}
-            >
-              Status
-            </button>
-          </div>
-        </div>
-
-        <div className="forward-preview">
-          <span className="micro">Preset code</span>
-          <code>{enableCode || `${preset.enable}<number>#`}</code>
-          <span className="micro">Raw USSD</span>
-          <div className="raw-ussd">
-            <input
-              value={rawCode}
-              onChange={(event) => setRawCode(event.target.value)}
-              placeholder="*21*…"
-              inputMode="tel"
-            />
-            <button
-              className="btn btn-outline btn-small"
-              disabled={!rawCode.trim() || forwardPending}
-              onClick={() => onCallForward(rawCode.trim(), activeForwardSub)}
-            >
-              {forwardPending ? 'Waiting…' : 'Send code'}
-            </button>
-          </div>
-        </div>
-
-        <p className="hint">
-          Forwarding uses the carrier’s USSD service; the exact codes and
-          whether the network allows them vary by operator. The agent sends the
-          code and reports the network response. Some carriers require the
-          device screen to confirm.
-        </p>
-      </section>
     </div>
   )
 }

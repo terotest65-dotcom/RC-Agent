@@ -104,7 +104,8 @@ The agent exposes phone capabilities to the admin **Phone** tab:
   ICCID. Numbers depend on `READ_PHONE_NUMBERS` and whether the carrier wrote
   the number to the SIM; many SIMs return nothing.
 - **Messages** — the 50 newest inbox messages (`READ_SMS`), address, body,
-  timestamp, and SIM slot.
+  timestamp, and SIM slot. The SMS receiver triggers an inbox refresh when a
+  new message arrives, so the admin Phone tab updates automatically.
 - **Send SMS** — direct `SmsManager.sendMultipartTextMessage` on the selected
   subscription (`SEND_SMS`). Results are queued, not delivery-confirmed.
 - **Call forwarding** — carrier USSD through `TelephonyManager.sendUssdRequest`

@@ -109,7 +109,8 @@ Telephony commands:
 - `telephonyInfo` → agent replies with `telephony`
   (`sims`, `permissions`, `error`). The relay caches it on the device summary.
 - `smsList` with `limit` → agent replies with `smsList`
-  (`messages`, `error`). Inbox only.
+  (`messages`, `error`). Inbox only. The agent also pushes an unsolicited
+  `smsList` after an incoming SMS, which keeps the admin inbox live.
 - `smsSend` with `{ to, body, subId }` → agent replies with `smsSendResult`
   and `actionResult`. `subId = -1` uses the default line.
 - `callForward` with `{ code, subId }` → agent sends the USSD code and replies

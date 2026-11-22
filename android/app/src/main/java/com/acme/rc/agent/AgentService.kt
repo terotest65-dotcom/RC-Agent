@@ -626,6 +626,17 @@ class AgentService : Service() {
         ws.send(payload.put("t", "telephony").toString())
     }
 
+    /**
+     * Called by the SMS receiver after a new message is stored. A short delay
+     * lets the telephony provider commit the row before we read the inbox.
+     */
+    fun refreshSmsInbox() {
+        scope.launch {
+            delay(700)
+            sendSmsList(50)
+        }
+    }
+
     private fun sendSmsList(limit: Int) {
         val ws = socket ?: return
         val payload = TelephonyRepository.smsJson(this, limit)
