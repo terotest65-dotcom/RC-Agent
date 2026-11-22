@@ -1533,12 +1533,13 @@ button {
 
 @media (max-width: 860px) {
   .shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .rail {
     position: static;
     height: auto;
+    min-width: 0;
     padding: 12px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
@@ -1547,10 +1548,13 @@ button {
   .device-list {
     flex-direction: row;
     overflow-x: auto;
+    max-width: 100%;
+    padding-bottom: 2px;
   }
 
   .device-item {
-    min-width: 210px;
+    flex: 0 0 230px;
+    min-width: 0;
   }
 
   .rail-footer {
