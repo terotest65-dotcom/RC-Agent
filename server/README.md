@@ -48,6 +48,11 @@ Environment:
   first use; the default is development-only.
 - **Grid:** the web panel can overlay a 6×10 numbered grid and send `tapXY`.
 - **Draft macro:** the recorder can turn recorded taps/text into a macro draft.
+- **Per-app recording:** click **Record** on an app row, use the device, then
+  **Stop & save**. The relay builds and saves the macro automatically:
+  launch, taps, text (masked text becomes a `secret` step), scrolls, and a final
+  screenshot. Events are filtered to the target app plus related packages
+  (for example Settings and its search provider).
 
 ## Endpoints
 

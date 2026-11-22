@@ -640,6 +640,10 @@ Even internal, this system can read OTPs and drive sensitive apps.
 > **Phase 3 status:** OTP capture (notification listener + SMS receiver) with
 > `waitForOtp` and a human prompt fallback; AES-GCM secrets with `secretRef`;
 > a 6×10 grid fallback; and recorder → macro drafts are implemented.
+>
+> **Per-app recording:** the web's app-row **Record** starts a session, the agent
+> tags events with the session, and **Stop & save** auto-builds and saves a
+> macro (launch, taps, text, scrolls, screenshot).
 
 **Phase 0 exit criteria:** on two devices, list apps, launch one, capture a settled screenshot, and classify the six v1 apps as `controllable` / `partial` / `blocked`. If that works, the rest is engineering.
 

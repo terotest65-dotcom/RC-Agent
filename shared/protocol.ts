@@ -236,6 +236,7 @@ export interface RecordEvent {
   delta?: string | null
   before?: string | null
   label?: string | null
+  deltaY?: number | null
   redacted?: boolean
   masked?: boolean
 }
@@ -275,12 +276,14 @@ export interface RecordEventMessage {
   t: 'recordEvent'
   deviceId: string
   event: RecordEvent
+  sessionId?: string
 }
 
 export interface RecordingStateMessage {
   t: 'recordingState'
   deviceId: string
   recording: boolean
+  sessionId?: string
 }
 
 export interface PromptMessage {

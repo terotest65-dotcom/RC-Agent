@@ -92,3 +92,6 @@ Macros persist in `server/data/macros.json`.
 - **Grid:** toggle **Grid** in the snapshot panel for a 6×10 coordinate grid.
 - **Draft macro:** record a session in **Recorder**, then click **Draft macro**
   to get an editable macro skeleton.
+- **Per-app recording:** click **Record** on an app row, use the app on the
+  device, then **Stop & save**. The macro is saved automatically and appears in
+  **Macros**.

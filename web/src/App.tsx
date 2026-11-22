@@ -35,6 +35,13 @@ const DEFAULT_MACRO = `{
 
 type Tab = 'control' | 'macros' | 'recorder' | 'runs' | 'secrets'
 
+interface ActiveSession {
+  id: string
+  appPackage?: string
+  appLabel?: string
+  name?: string
+}
+
 function nowLabel() {
   return new Date().toLocaleTimeString()
 }
@@ -118,9 +125,11 @@ export default function App() {
   const [prompt, setPrompt] = useState<PromptMessage | null>(null)
   const [promptValue, setPromptValue] = useState('')
   const [gridMode, setGridMode] = useState(false)
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const selectedRef = useRef<string | null>(null)
+  const activeSessionRef = useRef<ActiveSession | null>(null)
 
   const appendLog = useCallback((line: string) => {
     setLog((prev) => [`${nowLabel()}  ${line}`, ...prev].slice(0, 250))
@@ -129,6 +138,10 @@ export default function App() {
   useEffect(() => {
     selectedRef.current = selectedId
   }, [selectedId])
+
+  useEffect(() => {
+    activeSessionRef.current = activeSession
+  }, [activeSession])
 
   const sendRaw = useCallback(
     (message: object) => {
@@ -264,10 +277,24 @@ export default function App() {
           break
         case 'recordEvent':
           if (msg.deviceId !== selectedRef.current) break
+          if (
+            msg.sessionId &&
+            activeSessionRef.current &&
+            msg.sessionId !== activeSessionRef.current.id
+          ) {
+            break
+          }
           setRecordEvents((prev) => [msg.event, ...prev].slice(0, 300))
           break
         case 'recordingState':
           if (msg.deviceId !== selectedRef.current) break
+          if (
+            msg.sessionId &&
+            activeSessionRef.current &&
+            msg.sessionId !== activeSessionRef.current.id
+          ) {
+            break
+          }
           setRecording(msg.recording)
           appendLog(msg.recording ? 'recording started' : 'recording stopped')
           break
@@ -334,9 +361,10 @@ export default function App() {
     setEditing(null)
     setRecordEvents([])
     setRecording(false)
+    setActiveSession(null)
     const device = devices.find((d) => d.id === selectedId)
     if (device?.online) {
-      sendCmd(selectedId, 'snapshot')
+      sendCmd(selectedId, 'snapshot', {}, false)
       sendCmd(selectedId, 'listApps', {}, false)
     }
     // Selected device changes should not re-run when the device list updates.
@@ -381,16 +409,48 @@ export default function App() {
 
   const startRecording = () => {
     if (!selected) return
+    const sessionId = crypto.randomUUID()
     setTab('recorder')
+    setActiveSession({ id: sessionId })
     setRecordEvents([])
     setRecording(true)
-    sendCmd(selected.id, 'startRecording', {}, false)
+    sendCmd(selected.id, 'startRecording', { sessionId }, false)
+  }
+
+  const startAppRecording = (app: AppInfo) => {
+    if (!selected) return
+    const sessionId = crypto.randomUUID()
+    const name = `${app.label} — recorded ${new Date().toLocaleTimeString()}`
+    setTab('recorder')
+    setActiveSession({
+      id: sessionId,
+      appPackage: app.pkg,
+      appLabel: app.label,
+      name
+    })
+    setRecordEvents([])
+    setRecording(true)
+    sendCmd(
+      selected.id,
+      'startRecording',
+      { sessionId, appPackage: app.pkg, appLabel: app.label, name },
+      false
+    )
+    // Start recording first, then open the app from its main screen.
+    sendCmd(selected.id, 'launch', { pkg: app.pkg }, false)
   }
 
   const stopRecording = () => {
     if (!selected) return
+    const session = activeSession
     setRecording(false)
-    sendCmd(selected.id, 'stopRecording', {}, false)
+    setActiveSession(null)
+    sendCmd(
+      selected.id,
+      'stopRecording',
+      { sessionId: session?.id },
+      false
+    )
   }
 
   const runMacro = (macro: Macro, params: Record<string, string>) => {
@@ -499,6 +559,19 @@ export default function App() {
           if (event.masked) step.secret = true
           steps.push(step)
           textStepByField.set(key, newIndex)
+        }
+      } else if (event.type === 'scroll') {
+        const selector = event.viewId
+          ? { viewId: event.viewId }
+          : event.className
+            ? { className: event.className }
+            : null
+        if (selector) {
+          steps.push({
+            op: 'scroll',
+            selector,
+            dir: (event.deltaY ?? 0) < 0 ? 'up' : 'down'
+          })
         }
       }
     }
@@ -707,6 +780,7 @@ export default function App() {
                           onOpen={() => sendCmd(selected.id, 'launch', { pkg: app.pkg })}
                           onCapture={() => sendCmd(selected.id, 'launch', { pkg: app.pkg })}
                           onProbe={() => sendCmd(selected.id, 'probe', { pkg: app.pkg })}
+                          onRecord={() => startAppRecording(app)}
                         />
                       ))}
                       {apps.length === 0 && (
@@ -786,6 +860,10 @@ export default function App() {
                   recording={recording}
                   events={recordEvents}
                   appLabel={appLabel}
+                  sessionLabel={
+                    activeSession?.appLabel ??
+                    (activeSession ? 'ad-hoc session' : null)
+                  }
                   disabled={!selected.online || !!activeRun}
                   onStart={startRecording}
                   onStop={stopRecording}
@@ -878,7 +956,8 @@ function AppRow({
   disabled,
   onOpen,
   onCapture,
-  onProbe
+  onProbe,
+  onRecord
 }: {
   app: AppInfo
   probe?: ProbeResult
@@ -886,6 +965,7 @@ function AppRow({
   onOpen: () => void
   onCapture: () => void
   onProbe: () => void
+  onRecord: () => void
 }) {
   const target = TARGET_APPS.includes(app.pkg)
   return (
@@ -910,6 +990,9 @@ function AppRow({
         </button>
         <button className="btn small" onClick={onProbe} disabled={disabled}>
           Probe
+        </button>
+        <button className="btn small" onClick={onRecord} disabled={disabled}>
+          Record
         </button>
       </div>
     </div>
@@ -1169,6 +1252,7 @@ function RecorderPanel({
   recording,
   events,
   appLabel,
+  sessionLabel,
   disabled,
   onStart,
   onStop,
@@ -1178,6 +1262,7 @@ function RecorderPanel({
   recording: boolean
   events: RecordEvent[]
   appLabel: (pkg?: string | null) => string
+  sessionLabel: string | null
   disabled: boolean
   onStart: () => void
   onStop: () => void
@@ -1210,7 +1295,7 @@ function RecorderPanel({
             </button>
           ) : (
             <button className="btn" onClick={onStop}>
-              Stop recording
+              {sessionLabel ? 'Stop & save' : 'Stop recording'}
             </button>
           )}
           <button className="btn" onClick={onClear}>
@@ -1227,6 +1312,13 @@ function RecorderPanel({
           </button>
         </div>
       </div>
+
+      {sessionLabel && (
+        <p className="muted small">
+          Recording for <strong>{sessionLabel}</strong>. Use the app normally, then
+          click <strong>Stop &amp; save</strong> to create the macro.
+        </p>
+      )}
 
       <div className="typed-card">
         <div className="muted small">Last text entered</div>

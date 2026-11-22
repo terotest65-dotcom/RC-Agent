@@ -16,7 +16,9 @@ import type {
   DeviceState,
   DeviceSummary,
   Macro,
+  MacroStep,
   ProbeResult,
+  RecordEvent,
   Role,
   RunRecord,
   RunStep,
@@ -56,11 +58,22 @@ interface DeviceRecord {
   probes: Record<string, ProbeResult>
 }
 
+interface RecordingSession {
+  id: string
+  deviceId: string
+  appPackage?: string
+  appLabel?: string
+  name?: string
+  startedAt: number
+  events: RecordEvent[]
+}
+
 const devices = new Map<string, DeviceRecord>()
 const admins = new Set<WsSocket>()
 const macros = new Map<string, Macro>()
 const runs = new Map<string, RunRecord>()
 const secrets = new Map<string, StoredSecret>()
+const recordingSessions = new Map<string, RecordingSession>()
 
 function log(...args: unknown[]) {
   console.log(new Date().toISOString(), ...args)
@@ -309,6 +322,104 @@ function sendSecrets(ws: WsSocket) {
   send(ws, { t: 'secrets', secrets: [...secrets.values()].map(secretInfo) })
 }
 
+function relatedApp(app: string | null | undefined, target: string | undefined): boolean {
+  if (app === 'com.acme.rc' && target !== 'com.acme.rc') return false
+  if (!target) return true
+  if (!app) return false
+  if (app === target) return true
+  if (app.startsWith(target) || target.startsWith(app)) return true
+  if (app.includes('settings') && target.includes('settings')) return true
+  return false
+}
+
+function macroFromSession(session: RecordingSession): Macro | null {
+  const events = session.events.filter((event) => relatedApp(event.app, session.appPackage))
+  if (
+    !events.some(
+      (event) =>
+        event.type === 'tap' || event.type === 'text' || event.type === 'scroll'
+    )
+  ) {
+    return null
+  }
+
+  const steps: MacroStep[] = []
+
+  if (session.appPackage) steps.push({ op: 'launch', package: session.appPackage })
+  steps.push({ op: 'waitForIdle' })
+
+  const textSteps = new Map<string, number>()
+  for (const event of events) {
+    if (event.type === 'tap') {
+      if (event.viewId) {
+        steps.push({ op: 'tap', selector: { viewId: event.viewId } })
+      } else if (event.label) {
+        steps.push({ op: 'tap', selector: { text: event.label } })
+      }
+    } else if (event.type === 'text' && !event.redacted) {
+      const selector = event.viewId
+        ? { viewId: event.viewId }
+        : event.className
+          ? { className: event.className }
+          : { className: 'android.widget.EditText' }
+      const key = event.viewId ?? event.className ?? 'field'
+      const index = textSteps.get(key)
+      if (index !== undefined) {
+        steps[index].text = event.text ?? ''
+        if (event.masked) steps[index].secret = true
+      } else {
+        const step: MacroStep = {
+          op: 'setText',
+          selector,
+          text: event.text ?? ''
+        }
+        if (event.masked) step.secret = true
+        steps.push(step)
+        textSteps.set(key, steps.length - 1)
+      }
+    } else if (event.type === 'scroll') {
+      const selector = event.viewId
+        ? { viewId: event.viewId }
+        : event.className
+          ? { className: event.className }
+          : undefined
+      if (selector) {
+        steps.push({
+          op: 'scroll',
+          selector,
+          dir: (event.deltaY ?? 0) < 0 ? 'up' : 'down'
+        })
+      }
+    }
+  }
+
+  steps.push({ op: 'screenshot', label: 'recorded' })
+
+  const label = session.appLabel ?? session.appPackage ?? 'App'
+  return {
+    id: randomUUID(),
+    name: session.name || `${label} — recorded ${new Date().toLocaleTimeString()}`,
+    appPackage: session.appPackage,
+    steps,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }
+}
+
+function finalizeSession(session: RecordingSession) {
+  recordingSessions.delete(session.id)
+  const macro = macroFromSession(session)
+  if (!macro) {
+    log('recording had no actions; not saved')
+    return
+  }
+  macros.set(macro.id, macro)
+  saveMacros()
+  broadcast({ t: 'macroSaved', macro })
+  broadcast({ t: 'macros', macros: [...macros.values()] })
+  log(`recorded macro: ${macro.name} (${macro.steps.length} steps)`)
+}
+
 loadMacros()
 loadSecrets()
 
@@ -422,11 +533,27 @@ wss.on('connection', (ws) => {
         case 'actionResult':
           broadcast({ t: 'actionResult', deviceId, ...msg })
           break
-        case 'recordEvent':
-          broadcast({ t: 'recordEvent', deviceId, event: msg.event })
+        case 'recordEvent': {
+          const sessionId = msg.sessionId ? String(msg.sessionId) : ''
+          const session = sessionId ? recordingSessions.get(sessionId) : undefined
+          if (session && session.deviceId === deviceId) {
+            session.events.push(msg.event as RecordEvent)
+          }
+          broadcast({
+            t: 'recordEvent',
+            deviceId,
+            event: msg.event,
+            ...(sessionId ? { sessionId } : {})
+          })
           break
+        }
         case 'recordingState':
-          broadcast({ t: 'recordingState', deviceId, recording: !!msg.recording })
+          broadcast({
+            t: 'recordingState',
+            deviceId,
+            recording: !!msg.recording,
+            ...(msg.sessionId ? { sessionId: msg.sessionId } : {})
+          })
           break
         case 'prompt':
           broadcast({ t: 'prompt', deviceId, ...msg })
@@ -556,6 +683,50 @@ wss.on('connection', (ws) => {
         const target = msg.deviceId ? devices.get(String(msg.deviceId)) : undefined
         if (!target || !target.online) {
           fail(`device offline: ${msg.deviceId ?? '?'}`)
+          return
+        }
+
+        if (msg.action === 'startRecording') {
+          const sessionId = msg.sessionId ? String(msg.sessionId) : randomUUID()
+          const existing = [...recordingSessions.values()].find(
+            (session) => session.deviceId === target.id
+          )
+          if (existing) finalizeSession(existing)
+
+          const session: RecordingSession = {
+            id: sessionId,
+            deviceId: target.id,
+            appPackage: msg.appPackage ? String(msg.appPackage) : undefined,
+            appLabel: msg.appLabel ? String(msg.appLabel) : undefined,
+            name: msg.name ? String(msg.name) : undefined,
+            startedAt: Date.now(),
+            events: []
+          }
+          recordingSessions.set(sessionId, session)
+          target.ws.send(
+            JSON.stringify({ ...msg, deviceId: target.id, sessionId })
+          )
+          return
+        }
+
+        if (msg.action === 'stopRecording') {
+          const sessionId = msg.sessionId ? String(msg.sessionId) : ''
+          const session = sessionId
+            ? recordingSessions.get(sessionId)
+            : [...recordingSessions.values()].find(
+                (candidate) => candidate.deviceId === target.id
+              )
+          target.ws.send(
+            JSON.stringify({
+              ...msg,
+              deviceId: target.id,
+              sessionId: session?.id ?? msg.sessionId
+            })
+          )
+          if (session) {
+            // Let the stop command and any final events reach us first.
+            setTimeout(() => finalizeSession(session), 500)
+          }
           return
         }
 

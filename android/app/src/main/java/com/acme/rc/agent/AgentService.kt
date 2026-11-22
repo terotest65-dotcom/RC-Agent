@@ -97,6 +97,7 @@ class AgentService : Service() {
     private val promptDeferred = mutableMapOf<String, CompletableDeferred<String>>()
     private val runVars = mutableMapOf<String, String>()
     private var currentRunId: String? = null
+    private var currentSessionId: String? = null
 
     private var reconnectAttempt = 0
     private var reconnectJob: Job? = null
@@ -287,16 +288,19 @@ class AgentService : Service() {
             }
             "startRecording" -> {
                 recording = true
+                currentSessionId = msg.optString("sessionId").takeIf { it.isNotBlank() }
                 lastTexts.clear()
                 maskedTyped.clear()
                 maskedVisible.clear()
-                sendRecordingState(true)
+                sendRecordingState(true, currentSessionId)
                 sendResult(cmdId, true)
                 return
             }
             "stopRecording" -> {
+                val sessionId = currentSessionId
                 recording = false
-                sendRecordingState(false)
+                currentSessionId = null
+                sendRecordingState(false, sessionId)
                 sendResult(cmdId, true)
                 return
             }
@@ -866,24 +870,34 @@ class AgentService : Service() {
                     ?: event.contentDescription?.toString()
                 payload.put("label", label ?: JSONObject.NULL)
             }
-            "scroll", "window" -> Unit
+            "scroll" -> {
+                val deltaY = try {
+                    event.scrollDeltaY
+                } catch (_: Throwable) {
+                    0
+                }
+                payload.put("deltaY", deltaY)
+            }
+            "window" -> Unit
         }
 
         socket?.send(
             JSONObject()
                 .put("t", "recordEvent")
                 .put("event", payload)
+                .apply {
+                    currentSessionId?.let { put("sessionId", it) }
+                }
                 .toString()
         )
     }
 
-    private fun sendRecordingState(recording: Boolean) {
-        socket?.send(
-            JSONObject()
-                .put("t", "recordingState")
-                .put("recording", recording)
-                .toString()
-        )
+    private fun sendRecordingState(recording: Boolean, sessionId: String?) {
+        val message = JSONObject()
+            .put("t", "recordingState")
+            .put("recording", recording)
+        if (sessionId != null) message.put("sessionId", sessionId)
+        socket?.send(message.toString())
     }
 
     private fun resolveAppLabel(pkg: String?): String? {
