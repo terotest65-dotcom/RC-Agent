@@ -1,5 +1,11 @@
 # Remote Control Android App — Options & Implementation Report
 
+> **⚠️ Superseded in part.** The project has moved to a **step-based** design
+> (app list + macros + numbered screenshots) instead of live screen streaming.
+> See [`step-control-design.md`](step-control-design.md) for the current plan.
+> This document is kept as background on the streaming architecture and the
+> Android platform constraints.
+
 **Project:** `RC-app` — a lightweight, AnyDesk-style remote control system for Android
 **Status:** Draft / decision document
 **Date:** 2026-11-22

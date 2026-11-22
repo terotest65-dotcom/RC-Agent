@@ -1,27 +1,35 @@
 # RC-app — Remote Control for Android
 
-A lightweight, AnyDesk-style remote control system: view and control an Android
-device from a web panel or admin app.
+An internal tool to control Android devices from a web panel: list installed
+apps, run predefined macros, and verify each step with a screenshot. Manual
+control uses a screenshot annotated with numbered hotspots — the admin replies
+with a number and the device taps that element.
 
-> **Status:** planning. The implementation options and recommended architecture
-> are documented in [`docs/remote-control-report.md`](docs/remote-control-report.md).
+> **Status:** planning. The design is in
+> [`docs/step-control-design.md`](docs/step-control-design.md).
 
-## Quick summary
+## Approach
 
 | Layer | Plan |
 |---|---|
-| Android agent | Kotlin — `MediaProjection` capture + `AccessibilityService` input |
-| Transport | WebSocket + H.264 first, WebRTC + TURN for internet |
-| Backend | Node.js/TypeScript, Postgres, Redis, coturn |
-| Admin | Next.js web panel (PWA), native app later |
+| Android agent | Kotlin — `AccessibilityService` tree + `takeScreenshot` + gesture/text actions |
+| Control model | Step-based: action → screenshot → verify (no live video) |
+| Macros | JSON step lists with selectors, checkpoints, assertions |
+| Transport | Single WebSocket relay (WSS); no WebRTC/TURN |
+| Backend | Node.js/TypeScript, Postgres |
+| Admin | Next.js web panel |
+
+Optional: an ADB-based lab controller for devices on a bench (no app install).
 
 ## Documents
 
-- [Options & implementation report](docs/remote-control-report.md) — approaches,
-  comparison, subsystem design, roadmap, risks.
+- [**Step-based design (current)**](docs/step-control-design.md) — app inventory,
+  numbered snapshots, macros, protocol, roadmap.
+- [Original options report](docs/remote-control-report.md) — the earlier
+  live-streaming exploration; kept for reference.
 
 ## Getting started
 
 Nothing is scaffolded yet. The recommended first step is **Phase 0** in the
-report: a local spike that captures the screen and injects gestures on a real
-device, before any networking work.
+design doc: list apps, launch one, and capture a screenshot with a hotspot map
+on two real devices.
