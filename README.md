@@ -9,11 +9,12 @@ A numbered-screenshot console is available for debugging and repair.
 
 ## Scope (v1)
 
-- **Targets:** a curated set of common Indian apps that pass a **capability probe**
-  (screenshots work + a usable accessibility tree). No real payments in v1.
-- **Devices:** 1–5 remote phones, Android 13+.
+- **Targets:** WhatsApp, Google Pay, PhonePe, Paytm, Chrome, Settings — each
+  admitted only after the **capability probe**. No real payments.
+- **Devices:** 1–5 remote phones, Android 13+. Device Owner optional (QR or ADB),
+  and everything must also work without it.
 - **Mode:** fully automatic and on demand; human fallback for OTPs and macro repair.
-- **OTP:** SMS or notification, with manual input fallback.
+- **OTP:** real OTPs on dedicated test accounts; SMS/notification capture + manual fallback.
 - **Admin:** web panel only; no live video (screenshot per step).
 
 ## Approach
@@ -39,6 +40,6 @@ Optional later: an ADB-based lab controller for devices on a bench.
 ## Getting started
 
 Nothing is scaffolded yet. Start with **Phase 0**: list apps, launch one, capture
-a settled screenshot with a hotspot map, and run the **capability probe** over a
-shortlist of candidate apps on two real devices. The probe tells you which apps
-are worth automating — don't guess from the app store listing.
+a settled screenshot with a hotspot map, and run the **capability probe** over the
+six v1 apps on two real devices. The probe tells you which apps are worth
+automating — don't guess from the app store listing.

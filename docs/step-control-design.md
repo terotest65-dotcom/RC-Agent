@@ -11,16 +11,17 @@
 
 | Decision | Choice |
 |---|---|
-| Target apps | **Curated common Indian apps that pass a capability probe**; own apps can be added later |
-| Own-app test tags | **Not available in v1**; selectors rely on `viewId`/text/description where exposed |
-| Payments | Probe and navigate; **no real transactions** in v1; stop before the final confirm |
+| Target apps (v1) | **WhatsApp, Google Pay, PhonePe, Paytm, Chrome, Settings** |
+| App admission | Capability probe per app/version; add more only when `controllable` |
+| Own-app test tags | Not available; selectors rely on `viewId`/text/description where exposed |
+| Payments | Navigate only; **no real transactions**; stop before the final confirm |
 | Third-party APIs | Later, through an `api` step |
 | Device location | Remote / field phones (no ADB) |
 | Autonomy | **Fully automatic**; human fallback only for OTPs and macro repair |
 | Scheduling | **On-demand only**; no cron or queue |
 | App management | Launch + control only |
-| OTP source | SMS or notification, with **human input fallback** |
-| Device state | Unlocked + charging; **Device Owner accepted** for keyguard and keep-awake |
+| OTP source | Real OTPs on dedicated test accounts; SMS/notification capture + human fallback |
+| Device state | Unlocked + charging; Device Owner **optional** (QR or ADB), with a no-DO mode |
 | Admin surface | Web panel only |
 | Live view | Screenshot per step; no video |
 | Scale | 1–5 devices |
@@ -118,13 +119,26 @@ This is the #1 operational failure mode for unattended runs. Handle it explicitl
 
 **Note:** `GLOBAL_ACTION_LOCK_SCREEN` can lock the device, but there is no global "unlock" action.
 
-**Device Owner (accepted for v1):** provision once via QR or `adb shell dpm set-device-owner …`. Use it to:
+**Device Owner (optional — both provisioning paths supported):**
+
+| Path | How | Notes |
+|---|---|---|
+| QR provisioning | Factory-reset device → scan the admin QR during setup | Standard managed-device flow |
+| ADB one-time | `adb shell dpm set-device-owner com.acme.rc/.AdminReceiver` | Device must have no accounts; fine for a small fleet |
+
+With Device Owner:
 
 - `setKeyguardDisabled(admin, true)` — remove the lock screen;
 - keep the device awake while charging (developer setting, or `setGlobalSetting` where permitted);
 - grant runtime permissions if needed.
 
-It does **not** enable Accessibility or notification access; those remain user toggles.
+**No-Device-Owner mode (must work):** feature-detect with `DevicePolicyManager.isDeviceOwnerApp(packageName)`.
+
+- If `false`: never call DO APIs; require the manual setup (no lock, stay awake) and show a dashboard warning.
+- Use the 1×1 `FLAG_KEEP_SCREEN_ON` overlay fallback if the device-level setting is not possible.
+- Preflight reports `deviceOwner: false`; runs still work on an unlocked, charging device.
+
+Accessibility and notification access are never grantable by Device Owner; they remain user toggles.
 
 ### 3.3 App inventory
 
@@ -171,17 +185,24 @@ Verdict:
 
 Show the verdict as a badge in the app list; re-probe when `versionCode` changes. This is what makes "common apps that allow control" concrete.
 
-**Candidate probe list (v1)** — a starting point, not a support commitment:
+**V1 probe set** — these six, nothing else until they are classified:
 
-| Category | Candidates | Notes |
-|---|---|---|
-| Messaging | WhatsApp, Telegram, Signal | Use a dedicated test account; UI automation can get consumer accounts flagged |
-| E-commerce | Flipkart, Amazon India, Meesho, Myntra | Usually rich trees; good first targets |
-| Food / travel | Swiggy, Zomato, Ola, Uber, IRCTC Rail Connect | Good trees; stop before payment confirmation |
-| Payments | Google Pay, PhonePe, Paytm | Probe only; many will be `blocked` or `partial` |
-| Utilities | Chrome, Google Maps, YouTube, Settings | Good for demos and selector practice |
+| App | Package | Category | Hypothesis | Notes |
+|---|---|---|---|---|
+| WhatsApp | `com.whatsapp` | Messaging | `controllable` | Dedicated test number; no bulk messaging |
+| Google Pay | `com.google.android.apps.nbu.paisa.user` | Payments | `partial`/`blocked` likely | Navigate only; stop before confirm |
+| PhonePe | `com.phonepe.app` | Payments | `partial`/`blocked` likely | Navigate only; stop before confirm |
+| Paytm | `net.one97.paytm` | Payments | `partial`/`blocked` likely | Navigate only; stop before confirm |
+| Chrome | `com.android.chrome` | Utility | `controllable` | URL/search/navigation macros |
+| Settings | `com.android.settings` | System | `controllable` | Prefer intents/APIs over UI taps |
 
-Probe 5–8 apps first. Add an app only when it comes back `controllable`.
+Package names are for the probe config; verify them on the device. "Hypothesis" is not a decision — the probe decides.
+
+### 3.3.2 Device and account profile
+
+The admin controls a **device**, not an account. The device reports an optional, redacted account label (e.g., `test-01`, last 4 digits) so the operator knows which session is active. Macros never hardcode an account, phone number, or UPI ID; they operate on whatever is already logged in.
+
+Keep one dedicated test account/number per app where possible. The agent does not need credentials — the device stays logged in, and the OTP flow only handles the challenge at login time.
 
 ### 3.4 Snapshot: screenshot + hotspots
 
@@ -306,7 +327,7 @@ class OtpNotificationListener : NotificationListenerService() {
 - Send only `otpReceived` metadata (source, timestamp) to the server, never the value.
 - Treat OTPs as credentials: memory only, single use, short TTL.
 
-**v1 caution:** with third-party apps there is no sandbox OTP. Prefer already-logged-in devices, use the human fallback for login OTPs, and never automate real OTPs for apps you do not own.
+**v1 policy:** real OTPs are acceptable on **dedicated test accounts**. Capture from notifications (default) or SMS; use the human fallback when capture fails. Never store the value; send only metadata to the server. Do not automate OTPs for accounts you do not own.
 
 ---
 
@@ -389,7 +410,7 @@ Priority: `viewId` → `text`/`textContains`/`regex` → `contentDescription` �
 - **Max runtime** per run (default 5 min) and a **kill switch** in the panel and on the notification.
 - One run per device at a time (lease). A second admin must explicitly take over.
 - `dryRun`: resolve every selector and screenshot, but do not tap.
-- **No real transactions in v1.** For payment flows, stop at the review screen and require `requiresConfirmation`; do not press the final "Pay" button. Test against a sandbox if one becomes available.
+- **No real transactions in v1.** For GPay/PhonePe/Paytm, stop at the review screen and require `requiresConfirmation`; never press the final "Pay" button. Test against a sandbox if one becomes available.
 
 ### 4.5 Recording
 
@@ -409,6 +430,19 @@ Record a human performing the task, then edit the draft.
 
 **Recorder output:** a timeline → draft macro with `waitFor` and assertions inserted automatically → review/edit UI → dry run → save.
 
+### 4.6 V1 example macros
+
+| App | First macro | Stops before |
+|---|---|---|
+| WhatsApp | Open chat → type message → send | — (dedicated test number) |
+| Chrome | Open URL → wait for page → screenshot | — |
+| Settings | Open Wi-Fi panel → screenshot | Changing a toggle (manual confirm) |
+| GPay | Open → select payee → enter amount → reach review | **Pay** (never pressed) |
+| PhonePe | Open → select payee → enter amount → reach review | **Pay** (never pressed) |
+| Paytm | Open → select payee → enter amount → reach review | **Pay** (never pressed) |
+
+Start with read-only/navigation macros. Add write actions only after the app's probe is `controllable` and the macro has passed a dry run.
+
 ---
 
 ## 5. Backend
@@ -427,9 +461,11 @@ For 1–5 devices, keep it boring:
 
 ```
 devices(id, name, model, android, agent_version, protocol_version, last_seen,
-        status, token_hash, state_json)
+        status, token_hash, account_label, device_owner, state_json)
 apps(device_id, package, label, version_name, version_code, icon_path,
      system, enabled, updated_at)                       -- PK(device_id, package)
+app_capabilities(device_id, package, version_code, screenshot_ok, secure_window,
+                 node_count, clickable_count, view_id_count, depth, verdict, probed_at)
 
 snapshots(id, device_id, ts, w, h, rotation, package, activity,
           image_path, elements_json, bytes, expires_at)
@@ -556,7 +592,7 @@ Even internal, this system can read OTPs and drive sensitive apps.
 | App hides UI (`accessibilityDataSensitive`) or blocks screenshots (`FLAG_SECURE`) | Empty tree / `SECURE_WINDOW` | Probe first; exclude `blocked` apps |
 | No test tags in third-party apps | Selectors are fragile | Prefer `viewId`/text/description; pin `appVersionCode`; dry-run after updates |
 | Third-party apps change their UI | Macros break | Re-probe on update; assertions; repair in assist console |
-| Real OTPs on third-party apps | Login cannot be automated safely | Use already-logged-in devices; human fallback; never automate OTPs for apps you don't own |
+| Real OTPs on test accounts | Login depends on SMS/notification capture | Dedicated test accounts; notification listener; human fallback; never store values |
 | Payment confirmation | Risk of real money movement | Stop before the final confirm; `requiresConfirmation`; sandbox when available |
 | Screen locked / asleep | Screenshot fails, input stops | Stay-awake + no lock; Device Owner `setKeyguardDisabled`; preflight |
 | Secure PIN pads / biometrics | Cannot automate | Human step or app test hook |
@@ -570,7 +606,7 @@ Even internal, this system can read OTPs and drive sensitive apps.
 | Device offline mid-run | Lost report | On-device buffer + `seq` resume; idempotent `runId` |
 | Multi-window | Ambiguous coords | Capture full display; document single-window |
 | IME appears over the app | Hotspot mismatch | Wait for idle; treat IME as its own window |
-| Messaging UI automation | ToS/ban risk | Prefer official APIs; keep as best-effort |
+| Messaging UI automation | ToS/ban risk | Dedicated test number; no bulk messaging; official API later |
 | Work profiles | Inventory/tree differences | `LauncherApps`; separate listener per profile |
 
 ---
@@ -579,7 +615,7 @@ Even internal, this system can read OTPs and drive sensitive apps.
 
 | Phase | Deliverable | Effort (1–2 devs) |
 |---|---|---|
-| **0. Spike** | Inventory, launch, snapshot + hotspot dump, device-state banner, capability probe over 5–8 candidate apps | 4–6 days |
+| **0. Spike** | Inventory, launch, snapshot + hotspot dump, device-state banner, capability probe over the six v1 apps | 4–6 days |
 | **1. Console** | WSS relay + run dashboard shell + numbered snapshot + tap/text/scroll/back + grid | 2 weeks |
 | **2. Engine** | Macro schema, runner, preflight, assertions, `tapIfExists`/`waitForIdle`, run report, offline buffer | 2–3 weeks |
 | **3. OTP + record** | Notification/SMS OTP, human fallback, secrets vault, recorder + editor, parameters | 2 weeks |
@@ -587,7 +623,7 @@ Even internal, this system can read OTPs and drive sensitive apps.
 
 **Total: ~8–10 weeks** for a solid v1 on 1–5 devices.
 
-**Phase 0 exit criteria:** on two devices, list apps, launch one, capture a settled screenshot, and classify 5–8 candidate apps as `controllable` / `partial` / `blocked`. If that works, the rest is engineering.
+**Phase 0 exit criteria:** on two devices, list apps, launch one, capture a settled screenshot, and classify the six v1 apps as `controllable` / `partial` / `blocked`. If that works, the rest is engineering.
 
 ---
 
@@ -614,13 +650,10 @@ RC-app/
 
 ## 12. Open questions
 
-1. **App set:** which 5–8 common Indian apps should the probe start with? (Messaging, e-commerce, food delivery, travel, payments.)
-2. **OTP testing:** are real OTPs acceptable for login, or should every OTP step use the human fallback?
-3. **Messaging accounts:** is a dedicated test account/number available? UI automation can get consumer accounts flagged.
-4. **Payments:** confirm that v1 stops at the review screen and never presses "Pay."
-5. **Device Owner:** QR provisioning or one-time `adb dpm set-device-owner`?
-6. **Failure alerts:** dashboard only, or email/Slack/Telegram?
-7. **Retention:** how long should run screenshots be kept?
+1. **Failure alerts:** dashboard only, or email/Slack/Telegram?
+2. **Retention:** how long should run screenshots be kept?
+3. **First macro per app:** confirm the example table in §4.6, or name a different flow for WhatsApp/Chrome/Settings.
+4. **Account labels:** what should the dashboard show (e.g., `test-01`, last 4 digits), and who can see it?
 
 ---
 
@@ -628,6 +661,6 @@ RC-app/
 
 - **A probed app set + Android 13+ + 1–5 devices** turns this into a tractable internal tool.
 - **Fully automatic, on demand** makes the **macro engine + run report** the product; the numbered console is the debugger.
-- **OTP** is the riskiest integration: notification listener first, human fallback by default; SMS Retriever only for your own apps.
+- **OTP** is the riskiest integration: notification listener first, human fallback when capture fails; SMS Retriever only for your own apps.
 - **Keep the devices unlocked and awake** before writing more code; treat lock/sleep as the top operational failure.
 - **Without test tags, text/description selectors and `appVersionCode` pinning** are the reliability levers. The capability probe tells you which apps are worth automating.
