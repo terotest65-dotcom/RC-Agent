@@ -95,7 +95,7 @@ Device → relay: `apps`, `state`, `snapshot`, `probe`, `actionResult`,
 `telephony`, `smsList`, `smsSendResult`, `ussdResult`.
 Admin → relay: `cmd` (`snapshot`, `launch`, `tap`, `tapXY`, `setText`,
 `inputText`, `scroll`, `globalAction`, `probe`, `probeTargets`, `listApps`,
-`telephonyInfo`, `smsList`, `smsSend`, `callForward`).
+`telephonyInfo`, `smsList`, `smsSend`, `callForward`, `wake`, `unlock`).
 `inputText` takes `{ text, submit }`: the agent focuses the editable field (or
 the first editable node on screen), applies `ACTION_SET_TEXT`, optionally
 presses IME enter, then sends a fresh snapshot.

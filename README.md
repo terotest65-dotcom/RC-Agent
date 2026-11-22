@@ -72,8 +72,12 @@ and device cards, a sticky topbar, readable status cards, large buttons, and a
 right-side activity drawer:
 
 - **Control** — apps, snapshot with hotspots, tap/type/scroll, back/home/
-  recents, and a composer that types into the focused field on the device
-  (`Insert` = set text, `Insert + Enter` = set text and press the IME enter key).
+  recents, a composer that types into the focused field on the device
+  (`Insert` = set text, `Insert + Enter` = set text and press the IME enter key),
+  plus **Wake** and **Unlock** actions. Wake works while the screen is off.
+  Unlock dismisses a swipe/no-security keyguard; a PIN/pattern/password still
+  requires the person to enter it, unless the device is provisioned with no
+  secure lock and Device Owner.
 - **Phone** — SIM details and numbers, inbox messages, direct SMS sending, and
   carrier-USSD call forwarding (all calls, no answer, busy, unreachable, or a
   raw code). Requires the phone/SMS permissions on the agent.

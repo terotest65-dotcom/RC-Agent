@@ -417,6 +417,8 @@ export type ActionName =
   | 'smsList'
   | 'smsSend'
   | 'callForward'
+  | 'wake'
+  | 'unlock'
   | 'launch'
   | 'tap'
   | 'tapXY'

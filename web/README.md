@@ -45,6 +45,9 @@ and IBM Plex Mono.
 - **Composer**: type text in the panel and press **Insert** to set it into the
   focused field on the device (`inputText`), or **Insert + Enter** to set it
   and press the IME enter key.
+- **Wake / Unlock** in the topbar: Wake turns the screen on while asleep.
+  Unlock dismisses a swipe/None keyguard; a secure PIN/pattern/password still
+  needs to be entered on the device.
 - app inventory with per-app **Record** and **Open** actions
 - device state chips (accessibility, screen, battery, Device Owner)
 - capability probing still exists in the agent and relay, but the panel no

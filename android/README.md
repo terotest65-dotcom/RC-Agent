@@ -62,6 +62,22 @@ adb shell dpm set-device-owner com.acme.rc/.admin.RcDeviceAdminReceiver
 Without Device Owner the app still works; it only loses the automatic
 keyguard disable and keep-awake helpers.
 
+## Wake and unlock
+
+- **Wake** uses a bright-screen wake lock with `ACQUIRE_CAUSES_WAKEUP`
+  (`WAKE_LOCK` permission) and works while the screen is off.
+- **Unlock** opens a transparent activity over the keyguard and calls
+  `KeyguardManager.requestDismissKeyguard`:
+  - A **swipe/None** lock is dismissed without interaction.
+  - A **PIN/pattern/password** lock shows the normal lock screen; the person
+    must enter it. This is an Android security boundary and a normal app
+    cannot bypass it.
+  - On a **Device Owner** device with the screen lock set to None, the agent
+    can remove the keyguard with `setKeyguardDisabled`; a secure lock is not
+    bypassable.
+- For unattended runs, provision a dedicated device with no secure lock (and
+  ideally Device Owner). Otherwise add a human unlock step to the workflow.
+
 ## Telephony: SIM, SMS, call forwarding
 
 The agent exposes phone capabilities to the admin **Phone** tab:

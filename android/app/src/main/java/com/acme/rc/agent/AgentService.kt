@@ -1,10 +1,13 @@
 package com.acme.rc.agent
 
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
@@ -21,7 +24,11 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import com.acme.rc.MainActivity
 import com.acme.rc.accessibility.RcAccessibilityService
+import com.acme.rc.admin.RcDeviceAdminReceiver
+import com.acme.rc.device.DevicePower
 import com.acme.rc.device.DeviceStateReader
+import com.acme.rc.device.UnlockActivity
+import com.acme.rc.device.UnlockBridge
 import com.acme.rc.inventory.AppInventory
 import com.acme.rc.model.AppInfo
 import com.acme.rc.model.Element
@@ -363,6 +370,75 @@ class AgentService : Service() {
                         val error = t.message ?: t.javaClass.simpleName
                         sendSmsSendResult(false, to, error, null)
                         sendResult(cmdId, false, error)
+                    }
+                }
+                return
+            }
+            "wake" -> {
+                scope.launch {
+                    try {
+                        val detail = DevicePower.wake(this@AgentService)
+                        sendResult(cmdId, true, null, detail)
+                        delay(700)
+                        captureAndSend()
+                    } catch (t: Throwable) {
+                        sendResult(cmdId, false, t.message ?: t.javaClass.simpleName)
+                    }
+                }
+                return
+            }
+            "unlock" -> {
+                scope.launch {
+                    val done = AtomicBoolean(false)
+                    fun finish(ok: Boolean, detail: String) {
+                        if (!done.compareAndSet(false, true)) return
+                        UnlockBridge.clear()
+                        sendResult(cmdId, ok, if (ok) null else detail, detail)
+                        if (ok) {
+                            scope.launch {
+                                delay(700)
+                                captureAndSend()
+                            }
+                        }
+                    }
+                    try {
+                        DevicePower.wake(this@AgentService)
+                        val keyguard = getSystemService(KeyguardManager::class.java)
+                        if (keyguard?.isKeyguardLocked != true) {
+                            finish(true, "Device is already unlocked")
+                            return@launch
+                        }
+                        UnlockBridge.register { ok, detail -> finish(ok, detail) }
+                        try {
+                            startActivity(
+                                Intent(this@AgentService, UnlockActivity::class.java)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        } catch (t: Throwable) {
+                            val dpm = getSystemService(DevicePolicyManager::class.java)
+                            val owner = dpm?.isDeviceOwnerApp(packageName) == true
+                            val secure = keyguard.isDeviceSecure
+                            if (owner && !secure) {
+                                val admin = ComponentName(
+                                    this@AgentService,
+                                    RcDeviceAdminReceiver::class.java
+                                )
+                                dpm?.setKeyguardDisabled(admin, true)
+                                delay(600)
+                                finish(true, "Keyguard disabled by Device Owner")
+                            } else {
+                                finish(
+                                    false,
+                                    "Could not open the unlock screen. " +
+                                        "Set the screen lock to None/Swipe, or unlock on the device."
+                                )
+                            }
+                            return@launch
+                        }
+                        delay(30_000)
+                        finish(false, "Timed out. Enter the PIN/pattern on the device.")
+                    } catch (t: Throwable) {
+                        finish(false, t.message ?: t.javaClass.simpleName)
                     }
                 }
                 return

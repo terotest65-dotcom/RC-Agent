@@ -45,6 +45,8 @@ type IconName =
   | 'battery'
   | 'app'
   | 'alert'
+  | 'sun'
+  | 'unlock'
 
 const TABS: Array<{ key: Tab; label: string; icon: IconName }> = [
   { key: 'control', label: 'Control', icon: 'control' },
@@ -907,6 +909,24 @@ export default function App() {
                   )}
                 </button>
                 <button
+                  className="btn btn-secondary"
+                  disabled={actionDisabled}
+                  title="Wake the screen"
+                  onClick={() => sendCmd(selected.id, 'wake')}
+                >
+                  <Icon name="sun" />
+                  Wake
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  disabled={actionDisabled}
+                  title="Dismiss the lock screen. A PIN or pattern may be required."
+                  onClick={() => sendCmd(selected.id, 'unlock')}
+                >
+                  <Icon name="unlock" />
+                  Unlock
+                </button>
+                <button
                   className="btn btn-primary"
                   disabled={actionDisabled}
                   onClick={() => sendCmd(selected.id, 'snapshot')}
@@ -1318,6 +1338,20 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
         <svg {...common} aria-hidden="true">
           <path d="M12 3l9 16H3z" />
           <path d="M12 9v5M12 17h.01" />
+        </svg>
+      )
+    case 'sun':
+      return (
+        <svg {...common} aria-hidden="true">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41" />
+        </svg>
+      )
+    case 'unlock':
+      return (
+        <svg {...common} aria-hidden="true">
+          <rect x="4" y="10" width="16" height="11" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 7.5-2" />
         </svg>
       )
     default:
