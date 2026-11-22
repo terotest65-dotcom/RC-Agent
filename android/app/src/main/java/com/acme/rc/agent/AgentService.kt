@@ -370,7 +370,7 @@ class AgentService : Service() {
                             if (!service().inputText(text, submit)) {
                                 error("no focused text field")
                             }
-                            delay(500)
+                            delay(if (submit) 900 else 500)
                             captureAndSend()
                         }
                         "scroll" -> {

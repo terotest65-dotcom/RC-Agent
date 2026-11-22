@@ -29,12 +29,14 @@ tailnet.
 
 ## Layout
 
-Dark SaaS console: device rail on the left (online state, app count), a
-workspace on the right with a status header, state chips, and tabs for
-**Control**, **Macros**, **Recorder**, **Runs**, and **Secrets**. The event
-log opens as a bottom **Activity** drawer so it never pushes the workspace
-around. Layout collapses to a single column and the drawer spans full width
-on narrow screens.
+Field console: a warm paper, ink and vermilion interface with a device rail
+on the left and an editorial workspace on the right. The header carries the
+device name in a serif display face, a telemetry strip replaces status pills,
+and tabs are numbered **Control**, **Macros**, **Recorder**, **Runs**, and
+**Secrets**. The event log opens as a bottom **Activity** drawer. Layout
+collapses to a single column on narrow screens; device cards scroll
+horizontally and tabs/telemetry fade at the edge. Fonts are self-hosted
+(Instrument Sans, Instrument Serif, IBM Plex Mono).
 
 ## Control surface
 
