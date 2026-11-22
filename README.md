@@ -67,16 +67,20 @@ and tap **Save & connect**. See [`server/README.md`](server/README.md) and
 
 ### Phase 2: macros, runs, recorder
 
-The web panel now has four tabs:
+The web panel is a dark SaaS console with a device rail and five workspace
+tabs plus a bottom activity drawer:
 
-- **Control** — apps, probe, snapshot, tap/type/scroll.
+- **Control** — apps, snapshot with hotspots, tap/type/scroll, back/home/
+  recents, and a composer that types into the focused field on the device
+  (`Insert` = set text, `Insert + Enter` = set text and press the IME enter key).
 - **Macros** — JSON macro editor, parameters, save/delete, run.
-- **Recorder** — start/stop recording and watch live text input, taps, scrolls,
-  and window changes per app. Text is captured from accessibility text-change
-  events, so typing `hi` in a chatbox shows the app and `hi`; password fields
-  are redacted.
+- **Recorder** — passive per-app recording: click **Record** on an app, then
+  open that app on the device yourself. Leaving the app or pressing
+  **Stop & save** saves the macro. Live text/tap/scroll feed, text-only
+  filter, typed-text list with copy-all.
 - **Runs** — run history with per-step status, timing, errors, and checkpoint
   screenshots.
+- **Secrets** — write-only encrypted values for `secretRef` steps.
 
 A sample macro **Settings — open Network & internet** is seeded by the relay.
 Macros persist in `server/data/macros.json`.

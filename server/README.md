@@ -93,8 +93,11 @@ Hello:
 ```
 
 Device → relay: `apps`, `state`, `snapshot`, `probe`, `actionResult`.
-Admin → relay: `cmd` (`snapshot`, `launch`, `tap`, `tapXY`, `setText`, `scroll`,
-`globalAction`, `probe`, `probeTargets`, `listApps`).
+Admin → relay: `cmd` (`snapshot`, `launch`, `tap`, `tapXY`, `setText`,
+`inputText`, `scroll`, `globalAction`, `probe`, `probeTargets`, `listApps`).
+`inputText` takes `{ text, submit }`: the agent focuses the editable field (or
+the first editable node on screen), applies `ACTION_SET_TEXT`, optionally
+presses IME enter, then sends a fresh snapshot.
 
 Snapshots carry a base64 WebP image in Phase 1. Move to binary frames or HTTP
 URLs when the image volume grows.

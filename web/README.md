@@ -25,16 +25,26 @@ The relay serves `dist/` at <http://localhost:8787/>.
 The token comes from `?token=...`, then `localStorage.rc_token`, then `dev`.
 It is sent in the WebSocket `hello` message, not as a header.
 
-## Phase 1 surface
+## Layout
 
-- device list with online/offline state
+Dark SaaS console: device rail on the left (online state, app count), a
+workspace on the right with a status header, state chips, and tabs for
+**Control**, **Macros**, **Recorder**, **Runs**, and **Secrets**. The event
+log opens as a bottom **Activity** drawer so it never pushes the workspace
+around. Layout collapses to a single column and the drawer spans full width
+on narrow screens.
+
+## Control surface
+
+- snapshot with numbered hotspot overlay; tap any hotspot to send `tap`
+- element list for tap/type/scroll plus Back / Home / Recents
+- **Composer**: type text in the panel and press **Insert** to set it into the
+  focused field on the device (`inputText`), or **Insert + Enter** to set it
+  and press the IME enter key.
+- app inventory with per-app **Record** and **Open** actions
 - device state chips (accessibility, screen, battery, Device Owner)
-- app inventory and per-app probe
-- `Probe v1 apps`
-- snapshot with numbered hotspot overlay
-- tap a hotspot, tap/type/scroll from the element list
-- Back / Home / Recents
-- event log
+- capability probing still exists in the agent and relay, but the panel no
+  longer exposes a probe tab.
 
 ## Phase 2 surface
 

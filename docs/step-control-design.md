@@ -512,9 +512,13 @@ Store screenshots at checkpoints and failures, not every step, unless a step is 
 
 **Assist console (secondary)**
 
-- Raw snapshot with numbered hotspots.
+- Raw snapshot with numbered hotspots; app inventory with per-app passive
+  recording (no app launch).
 - Click a number → tap → fresh screenshot.
 - Type text on editable elements; scroll; global actions.
+- **Device composer:** type in the panel and insert into the focused field
+  (`inputText`), optionally pressing IME enter; screenshots ignore the keyboard,
+  so this is the reliable path for text entry.
 - Grid fallback (6×12 cells) for screens without a tree.
 - "Pause auto-refresh on hover"; stable numbering.
 - Used to debug a failed run and repair the selector.
