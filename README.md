@@ -115,3 +115,15 @@ Macros persist in `server/data/macros.json`.
 - **Per-app recording:** click **Record** on an app row, then open the app on
   the device yourself and use it. Leaving the app or clicking **Stop & save**
   saves the macro automatically to **Macros**.
+
+
+## Deployment
+
+A production-oriented Docker image and Coolify notes are in
+[`docs/production.md`](docs/production.md). The relay is still unauthenticated,
+so do not expose it publicly until an auth layer is in place.
+
+```bash
+# local container check
+RC_SECRET_KEY="$(openssl rand -base64 48)" docker compose up --build
+```

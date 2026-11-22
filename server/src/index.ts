@@ -34,7 +34,18 @@ const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
-const SECRET_KEY = process.env.RC_SECRET_KEY ?? 'rc-dev-secret-key-change-me'
+const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+const SECRET_KEY =
+  process.env.RC_SECRET_KEY ??
+  (IS_PRODUCTION ? '' : 'rc-dev-secret-key-change-me')
+
+if (IS_PRODUCTION && SECRET_KEY.length < 32) {
+  console.error(
+    'RC_SECRET_KEY must be set to at least 32 characters in production. ' +
+      'Generate one with: openssl rand -base64 48'
+  )
+  process.exit(1)
+}
 
 interface StoredSecret {
   id: string

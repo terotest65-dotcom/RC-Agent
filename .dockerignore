@@ -1,0 +1,25 @@
+.git
+.gitignore
+.dockerignore
+
+# dependencies and builds
+node_modules
+**/node_modules
+web/dist
+server/dist
+server/data
+
+# local env and secrets
+.env
+.env.*
+*.jks
+*.keystore
+secrets.properties
+
+# Android is built separately
+android
+
+# local artifacts
+*.log
+*.png
+docs
