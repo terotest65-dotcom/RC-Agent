@@ -170,6 +170,10 @@ export default function App() {
     text: string
     scope: 'sms' | 'forward' | 'list'
   } | null>(null)
+  const [authed, setAuthed] = useState<boolean | null>(null)
+  const [password, setPassword] = useState('')
+  const [loginError, setLoginError] = useState<string | null>(null)
+  const [loginBusy, setLoginBusy] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const selectedRef = useRef<string | null>(null)
@@ -178,6 +182,63 @@ export default function App() {
   const appendLog = useCallback((line: string) => {
     setLog((prev) => [`${nowLabel()}  ${line}`, ...prev].slice(0, 250))
   }, [])
+
+  useEffect(() => {
+    let mounted = true
+    fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' })
+      .then((res) => {
+        if (mounted) setAuthed(res.ok)
+      })
+      .catch(() => {
+        if (mounted) setAuthed(false)
+      })
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const login = useCallback(async () => {
+    if (!password) return
+    setLoginBusy(true)
+    setLoginError(null)
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password })
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setLoginError(data.error ?? 'Sign in failed')
+        return
+      }
+      setPassword('')
+      setSelectedId(null)
+      setAuthed(true)
+      appendLog('signed in')
+    } catch {
+      setLoginError('Could not reach the relay')
+    } finally {
+      setLoginBusy(false)
+    }
+  }, [appendLog, password])
+
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/logout', {
+        method: 'POST',
+        credentials: 'same-origin'
+      })
+    } catch {
+      // Clear the local session anyway.
+    }
+    wsRef.current?.close()
+    setAuthed(false)
+    setSelectedId(null)
+    setDevices([])
+    appendLog('signed out')
+  }, [appendLog])
 
   useEffect(() => {
     selectedRef.current = selectedId
@@ -259,10 +320,9 @@ export default function App() {
       switch (msg.t) {
         case 'devices': {
           setDevices(msg.devices)
-          setSelectedId((prev) => {
-            if (prev && msg.devices.some((d) => d.id === prev)) return prev
-            return msg.devices.find((d) => d.online)?.id ?? msg.devices[0]?.id ?? null
-          })
+          setSelectedId((prev) =>
+            prev && msg.devices.some((d) => d.id === prev) ? prev : null
+          )
           break
         }
         case 'device': {
@@ -373,6 +433,10 @@ export default function App() {
         case 'error':
           setBusy(false)
           appendLog(`server: ${msg.message}`)
+          if (msg.message.includes('login required')) {
+            setAuthed(false)
+            setSelectedId(null)
+          }
           break
         case 'macros':
           setMacros(msg.macros)
@@ -461,6 +525,7 @@ export default function App() {
   )
 
   useEffect(() => {
+    if (!authed) return
     let closed = false
     let retry = 0
     let timer: number | undefined
@@ -497,7 +562,7 @@ export default function App() {
       window.clearTimeout(timer)
       wsRef.current?.close()
     }
-  }, [appendLog, handleMessage])
+  }, [appendLog, handleMessage, authed])
 
   useEffect(() => {
     if (!selectedId) return
@@ -759,6 +824,35 @@ export default function App() {
     secrets: secrets.length
   }
 
+  if (authed === null) return <SessionLoading />
+
+  if (!authed) {
+    return (
+      <LoginPage
+        password={password}
+        onPassword={setPassword}
+        onSubmit={() => {
+          void login()
+        }}
+        busy={loginBusy}
+        error={loginError}
+      />
+    )
+  }
+
+  if (!selected) {
+    return (
+      <DevicesPage
+        devices={devices}
+        connected={connected}
+        onSelect={setSelectedId}
+        onLogout={() => {
+          void logout()
+        }}
+      />
+    )
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -792,40 +886,32 @@ export default function App() {
 
         <div className="sidebar-devices">
           <div className="sidebar-heading">
-            <span>Devices</span>
-            <span className="sidebar-count">{devices.length}</span>
+            <span>Current device</span>
           </div>
-          <div className="device-list">
-            {devices.length === 0 && (
-              <div className="sidebar-empty">
-                No devices connected yet. Start the Android agent to begin.
-              </div>
-            )}
-            {devices.map((device) => (
-              <button
-                key={device.id}
-                className={`device-card ${device.id === selectedId ? 'active' : ''}`}
-                title={device.name}
-                onClick={() => setSelectedId(device.id)}
-              >
-                <span className="device-card-head">
-                  <span
-                    className={`status-dot ${device.online ? 'online' : ''}`}
-                  />
-                  <strong>{device.name}</strong>
-                </span>
-                <span className="device-card-meta">
-                  {device.profile
-                    ? `${device.profile.name} · ${device.profile.phone}`
-                    : device.model ?? device.id}
-                </span>
-                <span className="device-card-foot">
-                  {device.online ? 'Online' : 'Offline'} ·{' '}
-                  {device.apps?.length ?? 0} apps
-                </span>
-              </button>
-            ))}
+          <div className="current-device">
+            <span className="device-card-head">
+              <span
+                className={`status-dot ${selected.online ? 'online' : ''}`}
+              />
+              <strong>{selected.name}</strong>
+            </span>
+            <span className="device-card-meta">
+              {selected.profile
+                ? `${selected.profile.name} · ${selected.profile.phone}`
+                : selected.model ?? selected.id}
+            </span>
+            <span className="device-card-foot">
+              {selected.online ? 'Online' : 'Offline'} ·{' '}
+              {selected.apps?.length ?? 0} apps
+            </span>
           </div>
+          <button
+            className="btn btn-ghost btn-small switch-device"
+            onClick={() => setSelectedId(null)}
+          >
+            <Icon name="control" size={15} />
+            All devices
+          </button>
         </div>
 
         <div className="sidebar-footer">
@@ -836,7 +922,15 @@ export default function App() {
           <span className="relay-url">
             {WS_URL.replace(/^wss?:\/\//, '')}
           </span>
-          <span className="relay-note">LAN only · no token</span>
+          <span className="relay-note">Admin session · TLS</span>
+          <button
+            className="btn btn-ghost btn-small logout-button"
+            onClick={() => {
+              void logout()
+            }}
+          >
+            Log out
+          </button>
         </div>
       </aside>
 
@@ -882,7 +976,13 @@ export default function App() {
             <header className="topbar">
               <div className="page-title">
                 <div className="breadcrumb">
-                  <span>Devices</span> / {selected.name}
+                  <button
+                    className="breadcrumb-link"
+                    onClick={() => setSelectedId(null)}
+                  >
+                    Devices
+                  </button>{' '}
+                  / {selected.name}
                 </div>
                 <div className="title-row">
                   <h1>{TAB_LABELS[tab]}</h1>
@@ -909,14 +1009,6 @@ export default function App() {
                     Registered to <strong>{selected.profile.name}</strong>
                     <span>·</span>
                     {selected.profile.phone}
-                    <span
-                      className="operator-consent"
-                      title={`Consent recorded ${new Date(
-                        selected.profile.consentAt
-                      ).toLocaleString()}`}
-                    >
-                      Consent accepted
-                    </span>
                   </p>
                 )}
               </div>
@@ -1244,6 +1336,196 @@ export default function App() {
       </main>
     </div>
   )
+}
+
+function SessionLoading() {
+  return (
+    <div className="auth-screen">
+      <div className="auth-card auth-loading">
+        <div className="auth-brand">
+          <div className="brand-logo">RC</div>
+          <div className="auth-brand-copy">
+            <strong>RC Agent</strong>
+            <span>Admin console</span>
+          </div>
+        </div>
+        <p>Checking session…</p>
+      </div>
+    </div>
+  )
+}
+
+function LoginPage({
+  password,
+  onPassword,
+  onSubmit,
+  busy,
+  error
+}: {
+  password: string
+  onPassword: (value: string) => void
+  onSubmit: () => void
+  busy: boolean
+  error: string | null
+}) {
+  return (
+    <div className="auth-screen">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <div className="brand-logo">RC</div>
+          <div className="auth-brand-copy">
+            <strong>RC Agent</strong>
+            <span>Admin console</span>
+          </div>
+        </div>
+        <h1>Sign in</h1>
+        <p className="auth-lede">
+          Enter the shared admin password to manage enrolled devices.
+        </p>
+        <form
+          className="auth-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            onSubmit()
+          }}
+        >
+          <label className="field">
+            <span>Admin password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => onPassword(event.target.value)}
+              placeholder="Password"
+              autoComplete="current-password"
+              autoFocus
+            />
+          </label>
+          {error && <p className="form-error">{error}</p>}
+          <button
+            className="btn btn-primary auth-submit"
+            type="submit"
+            disabled={busy || !password}
+          >
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+        <p className="auth-note">
+          Internal use only · {window.location.host}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function DevicesPage({
+  devices,
+  connected,
+  onSelect,
+  onLogout
+}: {
+  devices: DeviceSummary[]
+  connected: boolean
+  onSelect: (id: string) => void
+  onLogout: () => void
+}) {
+  return (
+    <div className="devices-page">
+      <header className="devices-header">
+        <div className="auth-brand">
+          <div className="brand-logo">RC</div>
+          <div className="auth-brand-copy">
+            <strong>RC Agent</strong>
+            <span>Admin console</span>
+          </div>
+        </div>
+        <div className="devices-header-actions">
+          <span className={`relay-status ${connected ? 'online' : ''}`}>
+            <span className={`status-dot ${connected ? 'online' : ''}`} />
+            {connected ? 'Live' : 'Connecting…'}
+          </span>
+          <button className="btn btn-ghost btn-small" onClick={onLogout}>
+            Log out
+          </button>
+        </div>
+      </header>
+
+      <main className="devices-content">
+        <div className="devices-intro">
+          <p className="eyebrow">Devices</p>
+          <h1>Choose a device</h1>
+          <p>
+            Every enrolled agent appears here automatically, online or offline.
+            Select one to open its dashboard.
+          </p>
+        </div>
+
+        {devices.length === 0 ? (
+          <div className="devices-empty">
+            <div className="empty-icon">
+              <Icon name="control" size={28} />
+            </div>
+            <h2>No devices enrolled yet</h2>
+            <p>
+              Install the RC Agent APK, complete the name and phone form, and
+              grant accessibility. It will appear here as soon as it connects.
+            </p>
+          </div>
+        ) : (
+          <div className="device-tile-grid">
+            {devices.map((device) => (
+              <button
+                key={device.id}
+                className={`device-tile ${device.online ? 'online' : 'offline'}`}
+                onClick={() => onSelect(device.id)}
+              >
+                <div className="device-tile-top">
+                  <span
+                    className={`status-pill ${
+                      device.online ? 'online' : 'offline'
+                    }`}
+                  >
+                    <span
+                      className={`status-dot ${
+                        device.online ? 'online' : ''
+                      }`}
+                    />
+                    {device.online ? 'Online' : 'Offline'}
+                  </span>
+                  <span className="device-tile-apps">
+                    {device.apps?.length ?? 0} apps
+                  </span>
+                </div>
+                <h2>{device.name}</h2>
+                <p className="device-tile-meta">
+                  {device.model ?? 'Unknown model'} · Android{' '}
+                  {device.android ?? '?'}
+                </p>
+                {device.profile ? (
+                  <p className="device-tile-operator">
+                    <Icon name="check" size={14} />
+                    {device.profile.name} · {device.profile.phone}
+                  </p>
+                ) : (
+                  <p className="device-tile-operator muted">
+                    No operator registration
+                  </p>
+                )}
+                <div className="device-tile-foot">
+                  <span>{formatLastSeen(device.lastSeen)}</span>
+                  <span>Open dashboard →</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+function formatLastSeen(value?: number) {
+  if (!value) return 'Never seen'
+  return `Last seen ${new Date(value).toLocaleString()}`
 }
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {

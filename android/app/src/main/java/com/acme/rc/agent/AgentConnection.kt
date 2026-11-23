@@ -1,13 +1,16 @@
 package com.acme.rc.agent
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-
-/** Observable connection state for the Compose UI. */
+/** Connection state shared with the WebView status screen. */
 object AgentConnection {
-    var connected by mutableStateOf(false)
-    var status by mutableStateOf("Not connected")
-    var serverUrl by mutableStateOf("")
-    var deviceId by mutableStateOf("")
+    @Volatile
+    var connected: Boolean = false
+
+    @Volatile
+    var status: String = "Not connected"
+
+    @Volatile
+    var serverUrl: String = ""
+
+    @Volatile
+    var deviceId: String = ""
 }

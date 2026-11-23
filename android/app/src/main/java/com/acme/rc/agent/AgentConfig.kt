@@ -4,23 +4,16 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import org.json.JSONObject
+import com.acme.rc.BuildConfig
 
 object AgentConfig {
     private const val PREFS = "rc_agent"
-    private const val KEY_URL = "server_url"
     private const val KEY_NAME = "operator_name"
     private const val KEY_PHONE = "operator_phone"
     private const val KEY_CONSENT_AT = "consent_at"
     private const val KEY_TERMS = "terms_version"
 
-    const val DEFAULT_URL = "ws://10.0.2.2:8787/ws"
-
-    fun serverUrl(context: Context): String =
-        prefs(context).getString(KEY_URL, DEFAULT_URL) ?: DEFAULT_URL
-
-    fun setServerUrl(context: Context, url: String) {
-        prefs(context).edit().putString(KEY_URL, url.trim()).apply()
-    }
+    fun serverUrl(): String = BuildConfig.RELAY_URL
 
     fun hasProfile(context: Context): Boolean =
         !profileName(context).isNullOrBlank() && !profilePhone(context).isNullOrBlank()

@@ -25,8 +25,8 @@ A numbered-screenshot console is available for debugging and repair.
 | Execution | On-device macro engine with preflight, assertions, offline buffering |
 | Recording | Capture taps/text/scroll + screen/app context; no hardware keys in v1 |
 | Transport | Single WebSocket relay (WSS); `specialUse` foreground service |
-| Backend | Node.js/TypeScript + SQLite (or Postgres); one process, on demand |
-| Admin | Next.js — run dashboard, report, macro editor, assist console |
+| Backend | Node.js/TypeScript relay; JSON macros/secrets, in-memory device state |
+| Admin | Vite + React dashboard — login, device picker, macro editor, reports |
 
 Optional later: an ADB-based lab controller for devices on a bench.
 
@@ -46,18 +46,17 @@ cd android
 ./gradlew :app:assembleDebug
 ```
 
-See [`android/README.md`](android/README.md) for install, accessibility, and
-Device Owner setup. Start with **Phase 0**: list apps, launch one, capture a
-settled screenshot, and run the **capability probe** over the six v1 apps. The
-probe tells you which apps are worth automating — don't guess from the app store
-listing.
+See [`android/README.md`](android/README.md) for install, enrollment,
+accessibility, release builds, and Device Owner setup. The app is a WebView
+shell with a foreground service; remote control happens in the admin panel.
 
 ### Device enrollment
 
-The first launch opens a local WebView form asking for the operator's name,
-phone number, and consent. The details are stored on the device and sent to the
-admin console when the agent connects; the admin shows them as **Registered
-to …** under the device title. The form can be reopened from **Edit profile**.
+The app is WebView-only. First launch asks for the operator's name and phone
+number; saving starts the foreground agent automatically. The details are sent
+to the admin console when it connects, and the device appears in the admin
+device list without approval. The top-right **Permissions** chip shows relay,
+accessibility, notification, SMS/phone, battery, and Device Owner status.
 
 ### Phase 1 relay + web console
 
@@ -67,10 +66,12 @@ cd ../server && npm install && npm start
 # open http://localhost:8787/
 ```
 
-On the device, open **RC Agent**, keep the relay URL
-(`ws://10.0.2.2:8787/ws` on an emulator, `ws://<host-ip>:8787/ws` on a phone),
-and tap **Save & connect**. See [`server/README.md`](server/README.md) and
-[`web/README.md`](web/README.md).
+Open <http://localhost:8787/> and sign in with `RC_ADMIN_PASSWORD` (dev default
+`admin`). The agent uses a hardcoded relay URL and shared `RC_DEVICE_TOKEN`;
+debug builds default to the emulator, release builds require
+`-PrcRelayUrl=wss://…/ws -PrcDeviceToken=…`. See
+[`server/README.md`](server/README.md), [`web/README.md`](web/README.md), and
+[`android/README.md`](android/README.md).
 
 ### Phase 2: macros, runs, recorder
 
@@ -120,10 +121,14 @@ Macros persist in `server/data/macros.json`.
 ## Deployment
 
 A production-oriented Docker image and Coolify notes are in
-[`docs/production.md`](docs/production.md). The relay is still unauthenticated,
-so do not expose it publicly until an auth layer is in place.
+[`docs/production.md`](docs/production.md). The relay now has a shared admin
+password and shared device token; use strong values and TLS. Per-device tokens
+are still the recommended next hardening step.
 
 ```bash
 # local container check
-RC_SECRET_KEY="$(openssl rand -base64 48)" docker compose up --build
+RC_SECRET_KEY="$(openssl rand -base64 48)" \
+RC_ADMIN_PASSWORD="a-long-password" \
+RC_DEVICE_TOKEN="a-long-shared-device-token" \
+docker compose up --build
 ```

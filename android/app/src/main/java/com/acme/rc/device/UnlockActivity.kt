@@ -4,7 +4,7 @@ import android.app.KeyguardManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import androidx.activity.ComponentActivity
+import android.app.Activity
 
 /**
  * Invisible activity shown over the lock screen. For a swipe/no-security
@@ -12,7 +12,7 @@ import androidx.activity.ComponentActivity
  * shows the normal lock screen so the person can enter it. There is no way for
  * a normal app to bypass a secure lock.
  */
-class UnlockActivity : ComponentActivity() {
+class UnlockActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var completed = false
 

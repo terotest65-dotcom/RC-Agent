@@ -22,6 +22,7 @@ output.json
 secrets.properties
 .env
 .env.*
+!.env.example
 
 # Node / web panel
 node_modules/

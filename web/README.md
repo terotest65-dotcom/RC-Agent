@@ -20,23 +20,27 @@ npm run build
 
 The relay serves `dist/` at <http://localhost:8787/>.
 
-## Identity
+## Login and flow
 
-There is no token. The agent derives a stable device ID from `ANDROID_ID` and
-sends it in the `hello` message; the admin panel connects without credentials
-and selects a device by ID. Keep the relay on localhost, the LAN, or a private
-tailnet.
+The panel opens on a shared-password login page (`RC_ADMIN_PASSWORD`; dev default
+`admin`). After login you see every enrolled device, online or offline, with its
+operator. Clicking a device opens its single-device dashboard; other devices are
+not shown in the working view. **All devices** / **Switch device** returns to
+the list. **Log out** clears the session cookie.
+
+The agent connects with a shared `RC_DEVICE_TOKEN` and appears automatically
+after it enrolls; there is no approval step.
 
 ## Layout
 
-Clean light dashboard: a white sidebar with section navigation and device
-cards, a sticky topbar with the page title and actions, a status-card row, and
-white bordered cards on a soft gray background. Sections are **Control**,
-**Phone**, **Macros**, **Recorder**, **Runs**, and **Secrets**. The event log
-opens as a right-side **Activity** drawer. Layout adapts on narrow screens:
-the sidebar becomes a two-row navigation with horizontally scrolling device
-cards, and actions/buttons stretch for touch. Fonts are self-hosted Figtree
-and IBM Plex Mono.
+Login → device picker → one-device dashboard. The dashboard has a white
+sidebar with section navigation and the current device, a sticky topbar with
+the page title/actions, a status-card row, and white bordered cards on a soft
+gray background. Sections are **Control**, **Phone**, **Macros**, **Recorder**,
+**Runs**, and **Secrets**. The event log opens as a right-side **Activity**
+drawer. The device picker shows all enrolled devices, online or offline. Layout
+adapts on narrow screens: navigation wraps, device tiles stack, and buttons
+stretch for touch. Fonts are self-hosted Figtree and IBM Plex Mono.
 
 ## Control surface
 
@@ -55,9 +59,10 @@ and IBM Plex Mono.
 
 ## Registration
 
-The agent sends the operator name, phone, and consent time from its first-run
-WebView form. The admin shows **Registered to <name> · <phone>** beneath the
-device title. There is no separate login; the profile is informational.
+The agent sends the operator name and phone from its WebView setup form. The
+admin shows **Registered to <name> · <phone>** beneath the device title and on
+the device tile. There is no approval step or separate operator login; the
+profile is informational.
 
 ## Phone surface
 

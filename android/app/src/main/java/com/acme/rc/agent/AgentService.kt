@@ -121,7 +121,7 @@ class AgentService : Service() {
         instance = this
         createChannel()
         startForegroundCompat("Starting…")
-        AgentConnection.serverUrl = AgentConfig.serverUrl(this)
+        AgentConnection.serverUrl = AgentConfig.serverUrl()
         AgentConnection.deviceId = AgentConfig.deviceId(this)
     }
 
@@ -138,7 +138,7 @@ class AgentService : Service() {
             return START_NOT_STICKY
         }
 
-        val url = AgentConfig.serverUrl(this)
+        val url = AgentConfig.serverUrl()
         AgentConnection.serverUrl = url
         AgentConnection.deviceId = AgentConfig.deviceId(this)
         AgentConnection.status = "Connecting to $url…"
@@ -186,7 +186,7 @@ class AgentService : Service() {
         AgentConnection.status = "Reconnecting in ${delayMs / 1000}s…"
         reconnectJob = scope.launch {
             delay(delayMs)
-            if (shouldReconnect) connect(AgentConfig.serverUrl(this@AgentService))
+            if (shouldReconnect) connect(AgentConfig.serverUrl())
         }
     }
 
@@ -232,6 +232,7 @@ class AgentService : Service() {
         val hello = JSONObject()
             .put("t", "hello")
             .put("role", "device")
+            .put("token", com.acme.rc.BuildConfig.DEVICE_TOKEN)
             .put("deviceId", AgentConfig.deviceId(this))
             .put("name", AgentConfig.deviceName())
             .put("model", Build.MODEL)

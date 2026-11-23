@@ -6,6 +6,7 @@ export type Role = 'device' | 'admin'
 export interface HelloMessage {
   t: 'hello'
   role: Role
+  token?: string
   deviceId?: string
   name?: string
   model?: string

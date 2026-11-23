@@ -5,19 +5,19 @@ apps, and control the screen. Treat the relay and its data as sensitive.
 
 ## Before exposing the relay
 
-The current relay has **no authentication**: any client that can reach `/ws`
-can connect as an admin or a device. A public VPS without an auth layer is not
-safe. Do these before opening port 443 to the internet:
+The relay now has a **shared admin password** and a **shared device token**.
+That is enough to stop random internet scans, but both are shared secrets: one
+password for all admins and one device token embedded in every APK.
 
-1. Put the admin UI behind **Coolify Basic Auth**, **Cloudflare Access**, or an
-   identity-aware proxy. Enable 2FA on the Coolify dashboard itself.
-2. Add **device authentication**. The strongest option is a per-device
-   enrollment token stored in Android Keystore and revocable from the admin.
-   A shared device token in the APK is a weaker stopgap.
-3. Only expose ports **80/443**; keep SSH key-only and firewalled.
-4. Use a real domain and Let's Encrypt; the Android release must use `wss://`.
-
-The Docker image below is a deployment baseline, not an auth layer.
+1. Use strong random values for `RC_ADMIN_PASSWORD`, `RC_DEVICE_TOKEN`, and
+   `RC_SECRET_KEY`. Do not use the development defaults.
+2. Terminate TLS at Coolify and set `RC_PUBLIC_ORIGIN=https://your-domain`.
+   The release APK must use `wss://`.
+3. Enable 2FA on the Coolify dashboard and restrict SSH to keys.
+4. Only expose ports **80/443**; keep 8787 internal.
+5. Strongly consider per-device enrollment tokens next: the shared device token
+   is extractable from the APK and cannot revoke one device. The current design
+   intentionally accepts that tradeoff for simplicity.
 
 ## Coolify deployment
 
@@ -34,10 +34,14 @@ The Docker image below is a deployment baseline, not an auth layer.
    PORT=8787
    DATA_DIR=/data
    RC_SECRET_KEY=<openssl rand -base64 48>
+   RC_ADMIN_PASSWORD=<strong shared admin password>
+   RC_DEVICE_TOKEN=<strong shared device token>
+   RC_PUBLIC_ORIGIN=https://rc.example.com
    ```
 
    The server refuses to start in production without a 32+ character
-   `RC_SECRET_KEY`.
+   `RC_SECRET_KEY`, a 10+ character admin password, and a 24+ character device
+   token. Keep the admin password and device token in a password manager.
 6. Add a persistent volume mapping `/data`. It contains `macros.json` and
    `secrets.json`; future SQLite data should live there too.
 7. Deploy and confirm `https://rc.example.com/api/health`.
@@ -68,16 +72,25 @@ The debug APK is not suitable for distribution.
 2. Configure a `release` signing config, enable R8
    (`isMinifyEnabled = true`, `isShrinkResources = true`), and set a real
    `versionCode`/`versionName`.
-3. Set the release relay URL via `BuildConfig` or a flavor:
-   `wss://rc.example.com/ws`. Debug can stay on `ws://10.0.2.2:8787/ws`.
-4. Remove `android:usesCleartextTraffic="true"` from release builds. Use a
-   network security config that permits cleartext only in debug.
+3. Build release with the public relay and shared token hardcoded:
+
+   ```bash
+   ./gradlew :app:assembleRelease \
+     -PrcRelayUrl=wss://rc.example.com/ws \
+     -PrcDeviceToken='<RC_DEVICE_TOKEN>'
+   ```
+
+   Release builds fail if the URL is not `wss://` or the token is still the dev
+   default. Debug uses `ws://10.0.2.2:8787/ws` and `dev-device`.
+4. Cleartext is disabled; the network security config allows it only for the
+   emulator/localhost.
 5. Build and distribute the signed APK through an internal authenticated link
    or file share. Keep the keystore safe; all updates must use the same key.
 6. Add an update check endpoint (versionCode + APK URL) so the team knows when
    to update.
 7. For unattended devices: provision Device Owner, set screen lock to None,
    disable battery optimization, and verify auto-start/reboot behavior.
+8. The device enrollment token is in the APK; treat the APK as sensitive.
 
 ## Recommended service hardening
 
@@ -91,8 +104,9 @@ The debug APK is not suitable for distribution.
 ## Local Docker test
 
 ```bash
-RC_SECRET_KEY="$(openssl rand -base64 48)" docker compose up --build
-# http://localhost:8787/
+RC_SECRET_KEY="$(openssl rand -base64 48)" \
+RC_ADMIN_PASSWORD="change-this-password" \
+RC_DEVICE_TOKEN="change-this-device-token" \
+docker compose up --build
+# http://localhost:8787/ — sign in with the admin password
 ```
-
-The admin UI is still unauthenticated in this local test.

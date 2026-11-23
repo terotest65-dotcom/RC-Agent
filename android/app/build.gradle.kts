@@ -7,17 +7,48 @@ android {
     namespace = "com.acme.rc"
     compileSdk = 35
 
+    val rcRelayUrl =
+        (findProperty("rcRelayUrl") as String?)
+            ?: System.getenv("RC_RELAY_URL")
+            ?: "ws://10.0.2.2:8787/ws"
+    val rcDeviceToken =
+        (findProperty("rcDeviceToken") as String?)
+            ?: System.getenv("RC_DEVICE_TOKEN")
+            ?: "dev-device"
+
+    fun quoted(value: String) = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+    val isReleaseBuild = gradle.startParameter.taskNames.any {
+        it.contains("Release", ignoreCase = true)
+    }
+    if (isReleaseBuild && !rcRelayUrl.startsWith("wss://")) {
+        throw GradleException(
+            "Release builds need a WSS relay URL: " +
+                "-PrcRelayUrl=wss://rc.example.com/ws"
+        )
+    }
+    if (isReleaseBuild && rcDeviceToken == "dev-device") {
+        throw GradleException(
+            "Release builds need the shared device token: " +
+                "-PrcDeviceToken=<RC_DEVICE_TOKEN>"
+        )
+    }
+
     defaultConfig {
         applicationId = "com.acme.rc"
         minSdk = 33
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        buildConfigField("String", "RELAY_URL", quoted(rcRelayUrl))
+        buildConfigField("String", "DEVICE_TOKEN", quoted(rcDeviceToken))
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -34,10 +65,7 @@ android {
     }
 
     buildFeatures {
-        compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
+        buildConfig = true
     }
 
     packaging {
@@ -47,14 +75,6 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.activity:activity-compose:1.9.0")
-
-    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material3:material3")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

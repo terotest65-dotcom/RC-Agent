@@ -11,6 +11,9 @@ services:
       PORT: 8787
       DATA_DIR: /data
       RC_SECRET_KEY: ${RC_SECRET_KEY:?Set RC_SECRET_KEY to a 32+ character random value}
+      RC_ADMIN_PASSWORD: ${RC_ADMIN_PASSWORD:?Set a shared admin password}
+      RC_DEVICE_TOKEN: ${RC_DEVICE_TOKEN:?Set a shared device token}
+      RC_PUBLIC_ORIGIN: ${RC_PUBLIC_ORIGIN:-http://localhost:8787}
     volumes:
       - rc-data:/data
     security_opt:

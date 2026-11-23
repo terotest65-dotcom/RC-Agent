@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>RC Agent</title>
+    <style>
+      :root {
+        --bg: #f5f7fb;
+        --card: #ffffff;
+        --ink: #101828;
+        --text: #344054;
+        --muted: #667085;
+        --line: #e4e7ec;
+        --primary: #2563eb;
+        --primary-strong: #1d4ed8;
+        --success: #067647;
+        --success-bg: #ecfdf3;
+        --danger: #b42318;
+        --danger-bg: #fef3f2;
+        --warning: #b54708;
+        --warning-bg: #fffaeb;
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          'Helvetica Neue', Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 20px;
+        background: rgba(255, 255, 255, 0.95);
+        border-bottom: 1px solid var(--line);
+        position: sticky;
+        top: 0;
+        z-index: 20;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .logo {
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        flex: 0 0 38px;
+        border-radius: 10px;
+        background: var(--primary);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .brand-copy {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.25;
+        min-width: 0;
+      }
+
+      .brand-copy strong {
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .brand-copy span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .perm-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 34px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 99px;
+        background: #fff;
+        color: var(--muted);
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .perm-chip .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+
+      .perm-chip.ok {
+        border-color: #a6f4c5;
+        background: var(--success-bg);
+        color: var(--success);
+      }
+
+      .perm-chip.ok .dot {
+        background: var(--success);
+      }
+
+      .perm-chip.warn {
+        border-color: #fedf89;
+        background: var(--warning-bg);
+        color: var(--warning);
+      }
+
+      .perm-chip.warn .dot {
+        background: #f79009;
+      }
+
+      .perm-chip.bad {
+        border-color: #fecdca;
+        background: var(--danger-bg);
+        color: var(--danger);
+      }
+
+      .perm-chip.bad .dot {
+        background: var(--danger);
+      }
+
+      .screen {
+        width: 100%;
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 22px 18px 42px;
+      }
+
+      .card {
+        padding: 22px 20px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--card);
+        box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--primary);
+        font-size: 11.5px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 27px;
+        font-weight: 750;
+        letter-spacing: -0.025em;
+        line-height: 1.15;
+      }
+
+      .lede {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14.5px;
+        line-height: 1.55;
+      }
+
+      form {
+        display: grid;
+        gap: 14px;
+        margin-top: 20px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      input[type='text'],
+      input[type='tel'] {
+        width: 100%;
+        height: 48px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--ink);
+        font-size: 16px;
+        outline: none;
+      }
+
+      input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      }
+
+      input::placeholder {
+        color: #98a2b3;
+      }
+
+      .error {
+        margin: 0;
+        padding: 9px 11px;
+        border: 1px solid #fecdca;
+        border-radius: 8px;
+        background: var(--danger-bg);
+        color: var(--danger);
+        font-size: 13px;
+      }
+
+      button {
+        font-family: inherit;
+        cursor: pointer;
+      }
+
+      .primary {
+        width: 100%;
+        min-height: 48px;
+        border: 1px solid var(--primary);
+        border-radius: 10px;
+        background: var(--primary);
+        color: #fff;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .primary:hover {
+        background: var(--primary-strong);
+      }
+
+      .secondary {
+        min-height: 42px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fff;
+        color: var(--text);
+        font-size: 13.5px;
+        font-weight: 600;
+      }
+
+      .secondary:hover {
+        background: #f8fafc;
+      }
+
+      .link {
+        min-height: 38px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font-size: 13.5px;
+        font-weight: 600;
+      }
+
+      .link:hover {
+        color: var(--ink);
+      }
+
+      .footnote {
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .status-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 18px;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 99px;
+        font-size: 12px;
+        font-weight: 600;
+        background: #f2f4f7;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .status-pill.online {
+        background: var(--success-bg);
+        color: var(--success);
+      }
+
+      .status-pill.offline {
+        background: var(--danger-bg);
+        color: var(--danger);
+      }
+
+      .status-pill .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      .meta-list {
+        display: grid;
+        gap: 0;
+        margin: 16px 0 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .meta-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 13px;
+      }
+
+      .meta-row span {
+        color: var(--muted);
+      }
+
+      .meta-row strong {
+        max-width: 65%;
+        text-align: right;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+
+      .warn-card {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border: 1px solid #fedf89;
+        border-radius: 10px;
+        background: var(--warning-bg);
+        color: var(--warning);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .warn-card strong {
+        display: block;
+        margin-bottom: 3px;
+      }
+
+      .warn-card button {
+        margin-top: 9px;
+      }
+
+      .profile-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding-top: 16px;
+        margin-top: 16px;
+        border-top: 1px solid var(--line);
+      }
+
+      .profile-row div {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .profile-row strong {
+        font-size: 14px;
+      }
+
+      .profile-row span {
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+
+      .sheet-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        background: rgba(16, 24, 40, 0.38);
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding: 12px;
+      }
+
+      .sheet {
+        width: 100%;
+        max-width: 560px;
+        max-height: 88vh;
+        overflow: auto;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 -20px 60px rgba(16, 24, 40, 0.2);
+        animation: rise 0.22s ease-out;
+      }
+
+      .sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .sheet-head h2 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 700;
+      }
+
+      .sheet-head button {
+        width: 34px;
+        height: 34px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 22px;
+        line-height: 1;
+      }
+
+      .sheet-body {
+        padding: 6px 18px 18px;
+      }
+
+      .perm-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 8px 12px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .perm-row:last-of-type {
+        border-bottom: 0;
+      }
+
+      .perm-copy {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      .perm-copy strong {
+        font-size: 13.5px;
+        font-weight: 600;
+      }
+
+      .perm-copy small {
+        color: var(--muted);
+        font-size: 11.5px;
+      }
+
+      .perm-value {
+        font-size: 11.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .perm-value.ok {
+        color: var(--success);
+      }
+
+      .perm-value.bad {
+        color: var(--danger);
+      }
+
+      .perm-value.warn {
+        color: var(--warning);
+      }
+
+      .perm-row .secondary {
+        min-height: 34px;
+        padding: 0 10px;
+        font-size: 12px;
+      }
+
+      .sheet-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        padding-top: 14px;
+      }
+
+      .sheet-note {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(18px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">RC</div>
+        <div class="brand-copy">
+          <strong>RC Agent</strong>
+          <span>Remote control · internal</span>
+        </div>
+      </div>
+      <button id="perm-chip" class="perm-chip" type="button">
+        <span class="dot"></span>
+        Permissions
+      </button>
+    </header>
+
+    <main class="screen">
+      <section id="setup" class="card" hidden>
+        <p class="eyebrow">Device enrollment</p>
+        <h1>Connect this device.</h1>
+        <p class="lede">
+          Enter the operator's name and phone number. The agent will connect to
+          the admin console automatically and appear in the device list.
+        </p>
+        <form id="profile-form" novalidate>
+          <label for="name">
+            Name
+            <input
+              id="name"
+              type="text"
+              autocomplete="name"
+              placeholder="e.g. Ravi Kumar"
+              required
+            />
+          </label>
+          <label for="phone">
+            Phone number
+            <input
+              id="phone"
+              type="tel"
+              inputmode="tel"
+              autocomplete="tel"
+              placeholder="+91 98765 43210"
+              required
+            />
+          </label>
+          <p id="form-error" class="error" hidden></p>
+          <button class="primary" type="submit">Save and connect</button>
+          <button id="cancel-setup" class="link" type="button" hidden>
+            Cancel
+          </button>
+        </form>
+        <p class="footnote">
+          The agent runs as a foreground service. Accessibility is needed for
+          remote control; SMS and phone permissions enable the Phone tab.
+        </p>
+      </section>
+
+      <section id="status" class="card" hidden>
+        <div class="status-head">
+          <div>
+            <p class="eyebrow">Agent status</p>
+            <h1 id="status-title">Connecting…</h1>
+          </div>
+          <span id="status-pill" class="status-pill">
+            <span class="dot"></span>
+            <span id="status-pill-text">Offline</span>
+          </span>
+        </div>
+        <p id="status-text" class="lede"></p>
+
+        <div class="meta-list">
+          <div class="meta-row">
+            <span>Device ID</span>
+            <strong id="device-id">—</strong>
+          </div>
+          <div class="meta-row">
+            <span>Model</span>
+            <strong id="device-model">—</strong>
+          </div>
+          <div class="meta-row">
+            <span>Relay</span>
+            <strong id="server-url">—</strong>
+          </div>
+        </div>
+
+        <div id="accessibility-warning" class="warn-card" hidden>
+          <strong>Accessibility is off</strong>
+          Remote control cannot work until accessibility is enabled.
+          <br />
+          <button
+            class="secondary"
+            type="button"
+            onclick="openAccessibility()"
+          >
+            Open accessibility settings
+          </button>
+        </div>
+
+        <div class="profile-row">
+          <div>
+            <strong id="profile-name">—</strong>
+            <span id="profile-phone">—</span>
+          </div>
+          <button id="edit-profile" class="secondary" type="button">
+            Edit details
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <div id="sheet-backdrop" class="sheet-backdrop" hidden>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Permissions">
+        <div class="sheet-head">
+          <h2>Permissions &amp; status</h2>
+          <button id="sheet-close" type="button" aria-label="Close">×</button>
+        </div>
+        <div class="sheet-body">
+          <div class="perm-row">
+            <div class="perm-copy">
+              <strong>Relay connection</strong>
+              <small>Secure connection to the admin console</small>
+            </div>
+            <span id="p-relay" class="perm-value">—</span>
+            <button class="secondary" type="button" onclick="startAgent()">
+              Reconnect
+            </button>
+          </div>
+          <div class="perm-row">
+            <div class="perm-copy">
+              <strong>Accessibility</strong>
+              <small>Required to read the screen and tap</small>
+            </div>
+            <span id="p-accessibility" class="perm-value">—</span>
+            <button class="secondary" type="button" onclick="openAccessibility()">
+              Open
+            </button>
+          </div>
+          <div class="perm-row">
+            <div class="perm-copy">
+              <strong>Notification access</strong>
+              <small>OTP detection and notification reads</small>
+            </div>
+            <span id="p-notifications" class="perm-value">—</span>
+            <button
+              class="secondary"
+              type="button"
+              onclick="openNotificationAccess()"
+            >
+              Open
+            </button>
+          </div>
+          <div class="perm-row">
+            <div class="perm-copy">
+              <strong>SMS &amp; phone</strong>
+              <small>Phone tab, SMS and OTP fallback</small>
+            </div>
+            <span id="p-telephony" class="perm-value">—</span>
+            <button class="secondary" type="button" onclick="requestPermissions()">
+              Grant
+            </button>
+          </div>
+          <div class="perm-row">
+            <div class="perm-copy">
+              <strong>Battery &amp; stay awake</strong>
+              <small>Keeps the agent reliable when charging</small>
+            </div>
+            <span id="p-battery" class="perm-value">—</span>
+            <button class="secondary" type="button" onclick="openBattery()">
+              Open
+            </button>
+          </div>
+          <div class="perm-row">
+            <div class="perm-copy">
+              <strong>Device Owner</strong>
+              <small>Optional; improves unattended operation</small>
+            </div>
+            <span id="p-owner" class="perm-value">—</span>
+            <button class="secondary" type="button" onclick="openAppInfo()">
+              App info
+            </button>
+          </div>
+
+          <div class="sheet-actions">
+            <button
+              class="secondary"
+              type="button"
+              onclick="openAccessibility()"
+            >
+              Accessibility settings
+            </button>
+            <button
+              class="secondary"
+              type="button"
+              onclick="openNotificationAccess()"
+            >
+              Notification access
+            </button>
+          </div>
+          <p class="sheet-note">
+            Accessibility is required for screen control. SMS and phone
+            permissions are optional and only affect the Phone tab. On Android
+            13+, a sideloaded app may need <strong>Allow restricted settings</strong>
+            from App info → ⋮ first.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        var bridge = window.RCAndroid || null
+        var status = null
+        var editing = false
+        var setup = document.getElementById('setup')
+        var statusCard = document.getElementById('status')
+        var form = document.getElementById('profile-form')
+        var nameInput = document.getElementById('name')
+        var phoneInput = document.getElementById('phone')
+        var errorBox = document.getElementById('form-error')
+        var cancelButton = document.getElementById('cancel-setup')
+        var chip = document.getElementById('perm-chip')
+        var backdrop = document.getElementById('sheet-backdrop')
+
+        function readStatus() {
+          try {
+            return bridge && bridge.getStatus ? JSON.parse(bridge.getStatus()) : null
+          } catch (error) {
+            return null
+          }
+        }
+
+        function normalizePhone(value) {
+          return String(value || '').replace(/[^\d+]/g, '')
+        }
+
+        function validPhone(value) {
+          var digits = normalizePhone(value).replace(/\D/g, '')
+          return digits.length >= 7 && digits.length <= 15
+        }
+
+        function setValue(id, value, ok) {
+          var element = document.getElementById(id)
+          if (!element) return
+          element.textContent = value
+          element.className = 'perm-value ' + (ok === null ? '' : ok ? 'ok' : 'bad')
+        }
+
+        function boolLabel(value) {
+          return value ? 'Enabled' : 'Off'
+        }
+
+        function render() {
+          status = readStatus()
+          if (!status) return
+
+          var profile = status.profile
+          var hasProfile = profile && profile.name
+
+          if (!hasProfile && !editing) {
+            setup.hidden = false
+            statusCard.hidden = true
+            cancelButton.hidden = true
+            if (profile) {
+              nameInput.value = profile.name || ''
+              phoneInput.value = profile.phone || ''
+            }
+          } else if (!hasProfile && editing) {
+            setup.hidden = false
+            statusCard.hidden = true
+          } else {
+            setup.hidden = true
+            statusCard.hidden = false
+            document.getElementById('profile-name').textContent = profile.name
+            document.getElementById('profile-phone').textContent = profile.phone
+          }
+
+          var perms = status.permissions || {}
+          var online = !!status.connected
+          document.getElementById('status-pill').className =
+            'status-pill ' + (online ? 'online' : 'offline')
+          document.getElementById('status-pill-text').textContent =
+            online ? 'Online' : 'Offline'
+          document.getElementById('status-title').textContent = online
+            ? 'Agent is connected'
+            : 'Agent is offline'
+          document.getElementById('status-text').textContent =
+            status.connection || (online ? 'Connected to the relay.' : 'Waiting to connect.')
+          document.getElementById('device-id').textContent = status.deviceId || '—'
+          document.getElementById('device-model').textContent =
+            (status.model || 'Device') + ' · Android ' + (status.android || '?')
+          document.getElementById('server-url').textContent =
+            (status.serverUrl || '').replace(/^wss?:\/\//, '')
+
+          document.getElementById('accessibility-warning').hidden =
+            !!status.accessibility
+
+          var telephonyOk =
+            perms.readSms && perms.sendSms && perms.phoneState && perms.calls
+          var coreOk = online && status.accessibility && telephonyOk
+          var anyIssue =
+            !online || !status.accessibility || !perms.readSms || !perms.phoneState
+
+          chip.className =
+            'perm-chip ' + (coreOk ? 'ok' : anyIssue ? 'warn' : 'ok')
+          chip.querySelector('.dot').style.background = ''
+
+          setValue('p-relay', online ? 'Connected' : 'Offline', online)
+          setValue(
+            'p-accessibility',
+            boolLabel(status.accessibility),
+            status.accessibility
+          )
+          setValue(
+            'p-notifications',
+            boolLabel(status.notificationAccess),
+            status.notificationAccess
+          )
+          setValue('p-telephony', telephonyOk ? 'Granted' : 'Partial', telephonyOk)
+          setValue(
+            'p-battery',
+            status.battery ? status.battery + '%' + (status.charging ? ' · chg' : '') : '—',
+            status.battery > 20
+          )
+          setValue('p-owner', boolLabel(status.deviceOwner), null)
+        }
+
+        function refresh() {
+          render()
+        }
+
+        window.rcRefresh = refresh
+
+        form.addEventListener('submit', function (event) {
+          event.preventDefault()
+          errorBox.hidden = true
+          var name = nameInput.value.trim()
+          var phone = phoneInput.value.trim()
+
+          if (name.length < 2) {
+            errorBox.textContent = 'Enter the operator name.'
+            errorBox.hidden = false
+            nameInput.focus()
+            return
+          }
+          if (!validPhone(phone)) {
+            errorBox.textContent = 'Enter a valid phone number.'
+            errorBox.hidden = false
+            phoneInput.focus()
+            return
+          }
+          if (!bridge || !bridge.saveProfile) {
+            errorBox.textContent = 'Open this form inside the RC Agent app.'
+            errorBox.hidden = false
+            return
+          }
+          if (!bridge.saveProfile(name, phone)) {
+            errorBox.textContent = 'Could not save. Check the details and try again.'
+            errorBox.hidden = false
+            return
+          }
+          editing = false
+          render()
+        })
+
+        document.getElementById('edit-profile').addEventListener('click', function () {
+          if (!status || !status.profile) return
+          editing = true
+          nameInput.value = status.profile.name || ''
+          phoneInput.value = status.profile.phone || ''
+          setup.hidden = false
+          statusCard.hidden = true
+          cancelButton.hidden = false
+          errorBox.hidden = true
+        })
+
+        cancelButton.addEventListener('click', function () {
+          editing = false
+          render()
+        })
+
+        function openSheet() {
+          backdrop.hidden = false
+        }
+
+        function closeSheet() {
+          backdrop.hidden = true
+        }
+
+        chip.addEventListener('click', openSheet)
+        document.getElementById('sheet-close').addEventListener('click', closeSheet)
+        backdrop.addEventListener('click', function (event) {
+          if (event.target === backdrop) closeSheet()
+        })
+        window.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') closeSheet()
+        })
+
+        window.startAgent = function () {
+          if (bridge && bridge.startAgent) bridge.startAgent()
+        }
+        window.requestPermissions = function () {
+          if (bridge && bridge.requestPermissions) bridge.requestPermissions()
+        }
+        window.openAccessibility = function () {
+          if (bridge && bridge.openAccessibility) bridge.openAccessibility()
+        }
+        window.openNotificationAccess = function () {
+          if (bridge && bridge.openNotificationAccess) bridge.openNotificationAccess()
+        }
+        window.openBattery = function () {
+          if (bridge && bridge.openBatterySettings) bridge.openBatterySettings()
+        }
+        window.openAppInfo = function () {
+          if (bridge && bridge.openAppInfo) bridge.openAppInfo()
+        }
+
+        render()
+        setInterval(refresh, 2000)
+      })()
+    </script>
+  </body>
+</html>

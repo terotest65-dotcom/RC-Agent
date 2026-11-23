@@ -9,7 +9,15 @@ import {
 } from 'node:fs'
 import { extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { randomUUID, createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto'
+import {
+  randomUUID,
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  scryptSync,
+  timingSafeEqual
+} from 'node:crypto'
 import { WebSocketServer, type WebSocket as WsSocket } from 'ws'
 import type {
   AgentProfile,
@@ -39,6 +47,12 @@ const SECRET_KEY =
   process.env.RC_SECRET_KEY ??
   (IS_PRODUCTION ? '' : 'rc-dev-secret-key-change-me')
 
+const ADMIN_PASSWORD =
+  process.env.RC_ADMIN_PASSWORD ?? (IS_PRODUCTION ? '' : 'admin')
+const DEVICE_TOKEN =
+  process.env.RC_DEVICE_TOKEN ?? (IS_PRODUCTION ? '' : 'dev-device')
+const PUBLIC_ORIGIN = (process.env.RC_PUBLIC_ORIGIN ?? '').replace(/\/$/, '')
+
 if (IS_PRODUCTION && SECRET_KEY.length < 32) {
   console.error(
     'RC_SECRET_KEY must be set to at least 32 characters in production. ' +
@@ -46,6 +60,19 @@ if (IS_PRODUCTION && SECRET_KEY.length < 32) {
   )
   process.exit(1)
 }
+if (IS_PRODUCTION && ADMIN_PASSWORD.length < 10) {
+  console.error('RC_ADMIN_PASSWORD must be set to at least 10 characters in production.')
+  process.exit(1)
+}
+if (IS_PRODUCTION && DEVICE_TOKEN.length < 24) {
+  console.error('RC_DEVICE_TOKEN must be set to at least 24 characters in production.')
+  process.exit(1)
+}
+
+const ADMIN_COOKIE = 'rc_admin'
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000
+const sessions = new Map<string, number>()
+const loginAttempts = new Map<string, { count: number; resetAt: number }>()
 
 interface StoredSecret {
   id: string
@@ -93,6 +120,125 @@ function log(...args: unknown[]) {
   console.log(new Date().toISOString(), ...args)
 }
 
+function hash(value: string) {
+  return createHash('sha256').update(value).digest()
+}
+
+function safeEqual(left: string, right: string) {
+  return timingSafeEqual(hash(left), hash(right))
+}
+
+function parseCookies(header: string | undefined) {
+  const cookies = new Map<string, string>()
+  if (!header) return cookies
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=')
+    if (index < 0) continue
+    cookies.set(part.slice(0, index).trim(), part.slice(index + 1).trim())
+  }
+  return cookies
+}
+
+function sessionFromRequest(req: IncomingMessage) {
+  const token = parseCookies(req.headers.cookie).get(ADMIN_COOKIE)
+  if (!token) return null
+  const expires = sessions.get(token)
+  if (!expires) return null
+  if (expires < Date.now()) {
+    sessions.delete(token)
+    return null
+  }
+  return token
+}
+
+function adminCookie(token: string, secure: boolean) {
+  return `${ADMIN_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(
+    SESSION_TTL_MS / 1000
+  )};${secure ? ' Secure;' : ''}`
+}
+
+function clearAdminCookie(secure: boolean) {
+  return `${ADMIN_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0;${
+    secure ? ' Secure;' : ''
+  }`
+}
+
+
+function jsonStatus(res: ServerResponse, status: number, value: unknown) {
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store'
+  })
+  res.end(JSON.stringify(value))
+}
+
+function readJsonBody(req: IncomingMessage, limit = 4096) {
+  return new Promise<any>((resolve, reject) => {
+    let size = 0
+    const chunks: Buffer[] = []
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > limit) {
+        reject(new Error('body too large'))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      try {
+        resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {})
+      } catch {
+        reject(new Error('invalid json'))
+      }
+    })
+    req.on('error', reject)
+  })
+}
+
+function clientKey(req: IncomingMessage) {
+  const forwarded = req.headers['x-forwarded-for']
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim()
+  }
+  return req.socket.remoteAddress ?? 'unknown'
+}
+
+function loginBlocked(req: IncomingMessage) {
+  const key = clientKey(req)
+  const now = Date.now()
+  const entry = loginAttempts.get(key)
+  if (!entry || entry.resetAt < now) {
+    loginAttempts.delete(key)
+    return false
+  }
+  return entry.count >= 8
+}
+
+function recordLoginFailure(req: IncomingMessage) {
+  const key = clientKey(req)
+  const now = Date.now()
+  const entry = loginAttempts.get(key)
+  if (!entry || entry.resetAt < now) {
+    loginAttempts.set(key, { count: 1, resetAt: now + 5 * 60 * 1000 })
+    return
+  }
+  entry.count += 1
+}
+
+function adminOriginOk(req: IncomingMessage) {
+  const origin = req.headers.origin
+  if (!origin) return false
+  if (PUBLIC_ORIGIN) return origin === PUBLIC_ORIGIN
+  try {
+    const originHost = new URL(origin).hostname
+    const requestHost = (req.headers.host ?? '').split(':')[0]
+    return originHost === requestHost
+  } catch {
+    return false
+  }
+}
+
 function json(res: ServerResponse, value: unknown) {
   res.writeHead(200, {
     'content-type': 'application/json; charset=utf-8',
@@ -138,8 +284,69 @@ function serveStatic(_req: IncomingMessage, res: ServerResponse, pathname: strin
   res.end(readFileSync(file))
 }
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+  const secureCookie =
+    IS_PRODUCTION || req.headers['x-forwarded-proto'] === 'https'
+
+  if (url.pathname === '/api/login') {
+    if (req.method !== 'POST') {
+      jsonStatus(res, 405, { ok: false, error: 'method not allowed' })
+      return
+    }
+    if (loginBlocked(req)) {
+      jsonStatus(res, 429, { ok: false, error: 'Too many attempts. Try later.' })
+      return
+    }
+    let body: any
+    try {
+      body = await readJsonBody(req)
+    } catch (error) {
+      jsonStatus(res, 400, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'invalid request'
+      })
+      return
+    }
+    const password = typeof body?.password === 'string' ? body.password : ''
+    if (!safeEqual(password, ADMIN_PASSWORD)) {
+      recordLoginFailure(req)
+      jsonStatus(res, 401, { ok: false, error: 'Invalid password' })
+      return
+    }
+    loginAttempts.delete(clientKey(req))
+    const token = randomBytes(32).toString('base64url')
+    sessions.set(token, Date.now() + SESSION_TTL_MS)
+    res.setHeader('set-cookie', adminCookie(token, secureCookie))
+    jsonStatus(res, 200, { ok: true })
+    return
+  }
+
+  if (url.pathname === '/api/logout') {
+    if (req.method !== 'POST') {
+      jsonStatus(res, 405, { ok: false, error: 'method not allowed' })
+      return
+    }
+    const token = sessionFromRequest(req)
+    if (token) {
+      sessions.delete(token)
+      for (const admin of admins) {
+        if ((admin as any).rcSession === token) admin.close(4001, 'logged out')
+      }
+    }
+    res.setHeader('set-cookie', clearAdminCookie(secureCookie))
+    jsonStatus(res, 200, { ok: true })
+    return
+  }
+
+  if (url.pathname === '/api/session') {
+    if (sessionFromRequest(req)) {
+      jsonStatus(res, 200, { authenticated: true })
+    } else {
+      jsonStatus(res, 401, { authenticated: false })
+    }
+    return
+  }
 
   if (url.pathname === '/api/health') {
     json(res, {
@@ -152,6 +359,11 @@ const server = createServer((req, res) => {
       secrets: secrets.size,
       uptime: Math.round(process.uptime())
     })
+    return
+  }
+
+  if (url.pathname.startsWith('/api/') && !sessionFromRequest(req)) {
+    jsonStatus(res, 401, { ok: false, error: 'login required' })
     return
   }
 
@@ -457,7 +669,7 @@ server.on('upgrade', (req, socket, head) => {
   })
 })
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   let role: Role | null = null
   let deviceId: string | null = null
 
@@ -476,6 +688,13 @@ wss.on('connection', (ws) => {
       role = msg.role as Role
 
       if (role === 'admin') {
+        const session = sessionFromRequest(req)
+        if (!session || !adminOriginOk(req)) {
+          fail('login required')
+          ws.close(4001, 'login required')
+          return
+        }
+        ;(ws as any).rcSession = session
         admins.add(ws)
         send(ws, { t: 'devices', devices: [...devices.values()].map(summary) })
         sendMacros(ws)
@@ -486,6 +705,11 @@ wss.on('connection', (ws) => {
       }
 
       if (role === 'device') {
+        if (!safeEqual(String(msg.token ?? ''), DEVICE_TOKEN)) {
+          fail('bad device token')
+          ws.close(4003, 'bad device token')
+          return
+        }
         const id = msg.deviceId ? String(msg.deviceId) : ''
         if (!id) {
           fail('deviceId required')
@@ -878,6 +1102,13 @@ const heartbeat = setInterval(() => {
     if (admin.readyState === admin.OPEN) admin.ping()
   }
 }, 25_000)
+
+setInterval(() => {
+  const now = Date.now()
+  for (const [token, expires] of sessions) {
+    if (expires < now) sessions.delete(token)
+  }
+}, 10 * 60 * 1000).unref()
 
 server.listen(PORT, () => {
   log(`RC relay listening on http://0.0.0.0:${PORT}`)

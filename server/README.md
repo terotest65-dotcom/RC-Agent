@@ -1,4 +1,4 @@
-# RC Relay (Phase 1)
+# RC Relay
 
 A single Node/TypeScript process that:
 
@@ -19,21 +19,40 @@ npm install
 npm start
 ```
 
-Open <http://localhost:8787/>.
+Open <http://localhost:8787/> and sign in.
+
+Development defaults: admin password `admin`, device token `dev-device`.
+Production refuses to start without strong values.
 
 Environment:
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` | `8787` | HTTP + WebSocket port |
+| `RC_ADMIN_PASSWORD` | `admin` (dev) | Shared admin password; required in production |
+| `RC_DEVICE_TOKEN` | `dev-device` (dev) | Shared device token; required in production |
+| `RC_PUBLIC_ORIGIN` | unset | Exact public origin, e.g. `https://rc.example.com` |
+| `RC_SECRET_KEY` | dev key | AES key for secrets; required 32+ chars in production |
 | `WEB_DIST` | `../web/dist` | Static web build |
+| `DATA_DIR` | `../data` | Macros/secrets storage; use `/data` in Docker |
+
+## Authentication
+
+- **Admin:** `POST /api/login` with the shared password sets an HttpOnly,
+  SameSite cookie. `/api/*` (except health/login/session) and admin WebSocket
+  connections require that session. The admin UI is at `/`; static assets are
+  public but contain no data.
+- **Device:** the agent sends the shared `RC_DEVICE_TOKEN` in its `hello`
+  message. A device without the token is rejected.
+- **Origins:** admin WebSocket connections must match `RC_PUBLIC_ORIGIN` when
+  set, otherwise the request host.
+- Login attempts are rate-limited in memory. Sessions expire after 12 hours.
 
 ## Device URL
 
-- Emulator: `ws://10.0.2.2:8787/ws`
-- Real phone on the same network: `ws://<host-ip>:8787/ws`
-- Put it behind Tailscale/WireGuard for remote devices; do not expose the
-  relay to the internet.
+- Emulator/debug: `ws://10.0.2.2:8787/ws`
+- Production: `wss://rc.example.com/ws` behind Coolify/TLS. Do not use `ws://`
+  over the internet.
 
 ## Phase 3: OTP, secrets, grid
 
@@ -58,13 +77,16 @@ Environment:
 
 | Path | Purpose |
 |---|---|
-| `GET /api/health` | status + counts |
-| `GET /api/devices` | device summaries (apps, state, probes) |
-| `GET /api/macros` | saved macros |
-| `GET /api/runs` | last 20 run reports |
-| `GET /api/secrets` | secret names/metadata only, never values |
+| `POST /api/login` | shared-password login, sets session cookie |
+| `POST /api/logout` | clear the session |
+| `GET /api/session` | session check |
+| `GET /api/health` | status + counts (public for Docker healthcheck) |
+| `GET /api/devices` | device summaries (auth required) |
+| `GET /api/macros` | saved macros (auth required) |
+| `GET /api/runs` | last 20 run reports (auth required) |
+| `GET /api/secrets` | secret names/metadata only, never values (auth required) |
 | `WS /ws` | device and admin socket |
-| `GET /` | web panel (SPA) |
+| `GET /` | web panel / login page |
 
 ## Phase 2: macros, runs, recorder
 
@@ -87,8 +109,9 @@ Environment:
 Hello:
 
 ```json
-{ "t": "hello", "role": "device", "deviceId": "and_…",
-  "name": "Pixel 7", "model": "Pixel 7", "android": 35, "agent": "1.0.0" }
+{ "t": "hello", "role": "device", "token": "<RC_DEVICE_TOKEN>",
+  "deviceId": "and_…", "name": "Pixel 7", "model": "Pixel 7",
+  "android": 35, "agent": "1.0.0" }
 ```
 
 Device → relay: `apps`, `state`, `snapshot`, `probe`, `actionResult`,
@@ -101,7 +124,7 @@ the first editable node on screen), applies `ACTION_SET_TEXT`, optionally
 presses IME enter, then sends a fresh snapshot.
 
 `profile` carries `{ name, phone, consentAt, termsVersion }` from the agent's
-first-run form. The relay caches it on the device summary and broadcasts it to
+name/phone setup form (`consentAt` is the registration timestamp). The relay caches it on the device summary and broadcasts it to
 admins.
 
 Telephony commands:
@@ -123,10 +146,14 @@ URLs when the image volume grows.
 
 ## Security
 
-- No token or login: the relay trusts whoever can reach the WebSocket. Device
-  identity is the generated device ID (`and_…`) shown in the agent.
+- Shared admin password and shared device token only. Use strong random values,
+  terminate TLS at Coolify, and set `RC_PUBLIC_ORIGIN`.
+- The device token is embedded in the APK and can be extracted. Per-device
+  enrollment tokens are the next hardening step for stronger identity and
+  revocation.
 - Telephony snapshots (phone numbers, SMS bodies, USSD responses) are held in
   memory and broadcast to admins. Treat the relay and its network as sensitive.
-- Keep it on localhost, the LAN, or Tailscale/WireGuard; do not expose it.
-- Before any real deployment: TLS, per-device credentials, admin accounts +
-  TOTP, and a reverse proxy.
+- Run history and device profiles are in memory; persist and back them up for
+  production.
+- Before broader exposure: per-device credentials, admin accounts + TOTP,
+  audit logs, and a reverse proxy/access layer.
