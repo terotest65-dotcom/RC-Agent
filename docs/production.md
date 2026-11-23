@@ -1,5 +1,8 @@
 # Production notes — VPS + Coolify
 
+For the complete step-by-step deployment and APK build, see
+[`../deployment_guide.md`](../deployment_guide.md).
+
 This is an internal remote-control system. It can read SMS, place calls, open
 apps, and control the screen. Treat the relay and its data as sensitive.
 

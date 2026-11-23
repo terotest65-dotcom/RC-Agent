@@ -32,6 +32,7 @@ Release (hardcoded public relay and shared device token):
 
 Release builds fail if the URL is not `wss://` or the token is still the dev
 default. Use a signed release build for distribution; see
+[`../deployment_guide.md`](../deployment_guide.md) and
 [`../docs/production.md`](../docs/production.md).
 
 `android:usesCleartextTraffic` is disabled. The network security config allows

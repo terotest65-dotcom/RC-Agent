@@ -120,8 +120,9 @@ Macros persist in `server/data/macros.json`.
 
 ## Deployment
 
-A production-oriented Docker image and Coolify notes are in
-[`docs/production.md`](docs/production.md). The relay now has a shared admin
+Full VPS/Coolify and signed-APK instructions are in
+[**deployment_guide.md**](deployment_guide.md). Additional hardening notes are
+in [`docs/production.md`](docs/production.md). The relay now has a shared admin
 password and shared device token; use strong values and TLS. Per-device tokens
 are still the recommended next hardening step.
 
