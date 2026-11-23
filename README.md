@@ -55,8 +55,9 @@ shell with a foreground service; remote control happens in the admin panel.
 The app is WebView-only. The foreground agent starts immediately and connects
 without waiting for a profile. Operator name and phone number are optional
 labels that can be added later. The device appears in the admin list without
-approval. The top-right **Permissions** chip shows relay, accessibility,
-notification, SMS/phone, battery, and Device Owner status.
+approval. The app opens on the operator page; the top-right **Status** indicator
+shows the agent connection state and opens relay, accessibility, notification,
+SMS/phone, battery, and Device Owner status.
 
 ### Phase 1 relay + web console
 

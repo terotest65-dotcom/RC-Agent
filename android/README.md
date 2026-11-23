@@ -52,11 +52,12 @@ The foreground service starts immediately on launch and connects with the
 hardcoded relay URL and shared device token. The device appears automatically
 in the admin device list. There is no relay URL field and no approval step.
 
-The WebView shows status and a **Permissions** panel. Operator **name and phone
-number are optional**: they only label the device in the admin panel and can be
-added later from the **Operator details** card.
+The WebView opens directly on the **Operator details** card. Operator **name and
+phone number are optional**: they only label the device in the admin panel and
+can be added later.
 
-The top-right **Permissions** chip opens the status panel:
+The top-right **Status** indicator reflects the agent state and opens the status
+and permissions panel:
 
 - Relay connection
 - Accessibility (required for screen control)
@@ -71,7 +72,7 @@ service starts; opening the app retries.
 
 ## Enable accessibility
 
-Use **Permissions → Accessibility → Open**. The app tries
+Use **Status → Accessibility → Open**. The app tries
 `android.settings.ACCESSIBILITY_DETAILS_SETTINGS` with the service component and
 falls back to the standard accessibility page. The exact list label varies:
 **Downloaded apps**, **Installed apps**, or **Installed services**. On Android

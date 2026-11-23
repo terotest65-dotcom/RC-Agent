@@ -384,7 +384,7 @@ automatically on the admin **Choose a device** page (no approval step).
 Operator **name and phone number are optional** — they only label the device.
 Add them later from the **Operator details** card if desired.
 
-Tap the top-right **Permissions** chip:
+Tap the top-right **Status** indicator to open permissions:
    - **Accessibility** → enabled (required for screen control),
    - **Notification access** → optional but recommended,
    - **SMS & phone** → grant for the Phone tab,

@@ -290,12 +290,31 @@
         line-height: 1.5;
       }
 
+      .sheet-status {
+        padding: 16px 0 2px;
+      }
+
       .status-head {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 18px;
+        margin-bottom: 6px;
+      }
+
+      .status-head h2 {
+        margin: 0;
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+
+      .status-copy {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
       }
 
       .status-pill {
@@ -610,55 +629,18 @@
           <span>Remote control · internal</span>
         </div>
       </div>
-      <button id="perm-chip" class="perm-chip" type="button">
+      <button
+        id="perm-chip"
+        class="perm-chip"
+        type="button"
+        aria-label="Agent status and permissions"
+      >
         <span class="dot"></span>
-        Permissions
+        Status
       </button>
     </header>
 
     <main class="screen">
-      <section id="status" class="card" hidden>
-        <div class="status-head">
-          <div>
-            <p class="eyebrow">Agent status</p>
-            <h1 id="status-title">Connecting…</h1>
-          </div>
-          <span id="status-pill" class="status-pill">
-            <span class="dot"></span>
-            <span id="status-pill-text">Offline</span>
-          </span>
-        </div>
-        <p id="status-text" class="lede"></p>
-
-        <div class="meta-list">
-          <div class="meta-row">
-            <span>Device ID</span>
-            <strong id="device-id">—</strong>
-          </div>
-          <div class="meta-row">
-            <span>Model</span>
-            <strong id="device-model">—</strong>
-          </div>
-          <div class="meta-row">
-            <span>Relay</span>
-            <strong id="server-url">—</strong>
-          </div>
-        </div>
-
-        <div id="accessibility-warning" class="warn-card" hidden>
-          <strong>Accessibility is off</strong>
-          Remote control cannot work until accessibility is enabled.
-          <br />
-          <button
-            class="secondary"
-            type="button"
-            onclick="openAccessibility()"
-          >
-            Open accessibility settings
-          </button>
-        </div>
-      </section>
-
       <section id="profile-card" class="card profile-card">
         <div class="profile-head">
           <div>
@@ -720,6 +702,7 @@
           </p>
         </form>
       </section>
+    </main>
 
     <div id="sheet-backdrop" class="sheet-backdrop" hidden>
       <div class="sheet" role="dialog" aria-modal="true" aria-label="Permissions">
@@ -728,6 +711,48 @@
           <button id="sheet-close" type="button" aria-label="Close">×</button>
         </div>
         <div class="sheet-body">
+          <div class="sheet-status">
+            <div class="status-head">
+              <div>
+                <p class="eyebrow">Agent status</p>
+                <h2 id="status-title">Connecting…</h2>
+              </div>
+              <span id="status-pill" class="status-pill offline">
+                <span class="dot"></span>
+                <span id="status-pill-text">Offline</span>
+              </span>
+            </div>
+            <p id="status-text" class="status-copy"></p>
+
+            <div class="meta-list">
+              <div class="meta-row">
+                <span>Device ID</span>
+                <strong id="device-id">—</strong>
+              </div>
+              <div class="meta-row">
+                <span>Model</span>
+                <strong id="device-model">—</strong>
+              </div>
+              <div class="meta-row">
+                <span>Relay</span>
+                <strong id="server-url">—</strong>
+              </div>
+            </div>
+
+            <div id="accessibility-warning" class="warn-card" hidden>
+              <strong>Accessibility is off</strong>
+              Remote control cannot work until accessibility is enabled.
+              <br />
+              <button
+                class="secondary"
+                type="button"
+                onclick="openAccessibility()"
+              >
+                Open accessibility settings
+              </button>
+            </div>
+          </div>
+
           <div class="perm-row">
             <div class="perm-copy">
               <strong>Relay connection</strong>
@@ -824,7 +849,6 @@
         var bridge = window.RCAndroid || null
         var status = null
         var editing = false
-        var statusCard = document.getElementById('status')
         var form = document.getElementById('profile-form')
         var nameInput = document.getElementById('name')
         var phoneInput = document.getElementById('phone')
@@ -873,8 +897,6 @@
           var profile = status.profile
           var hasProfile = profile && profile.name
 
-          statusCard.hidden = false
-
           if (editing) {
             form.hidden = false
             profileSummary.hidden = true
@@ -917,12 +939,9 @@
           var telephonyOk =
             perms.readSms && perms.sendSms && perms.phoneState && perms.calls
           var coreOk = online && status.accessibility && telephonyOk
-          var anyIssue =
-            !online || !status.accessibility || !perms.readSms || !perms.phoneState
 
           chip.className =
-            'perm-chip ' + (coreOk ? 'ok' : anyIssue ? 'warn' : 'ok')
-          chip.querySelector('.dot').style.background = ''
+            'perm-chip ' + (!online ? 'bad' : coreOk ? 'ok' : 'warn')
 
           setValue('p-relay', online ? 'Connected' : 'Offline', online)
           setValue(
