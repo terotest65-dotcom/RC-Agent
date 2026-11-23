@@ -64,9 +64,9 @@ class MainActivity : Activity() {
         }
         setContentView(webView)
 
-        if (AgentConfig.hasProfile(this)) {
-            startAgentService()
-        }
+        // Connect immediately. The operator profile is optional and must not
+        // gate remote enrollment.
+        startAgentService()
     }
 
     override fun onResume() {
@@ -97,11 +97,12 @@ class MainActivity : Activity() {
     }
 
     private fun startAgentService(sendProfileOnly: Boolean = false) {
-        if (!AgentConfig.hasProfile(this)) return
         try {
             val intent = Intent(this, AgentService::class.java)
             if (sendProfileOnly) {
-                startService(intent.setAction(AgentService.ACTION_SEND_PROFILE))
+                if (AgentConfig.hasProfile(this)) {
+                    startService(intent.setAction(AgentService.ACTION_SEND_PROFILE))
+                }
             } else {
                 ContextCompat.startForegroundService(this, intent)
             }

@@ -45,10 +45,13 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.acme.rc/.MainActivity
 ```
 
-On first launch, the WebView asks for the operator **name and phone number**.
-Saving starts the foreground service, which connects with the hardcoded relay
-URL and shared device token. The device appears automatically in the admin
-device list. There is no relay URL field and no approval step.
+The foreground service starts immediately on launch and connects with the
+hardcoded relay URL and shared device token. The device appears automatically
+in the admin device list. There is no relay URL field and no approval step.
+
+The WebView shows status and a **Permissions** panel. Operator **name and phone
+number are optional**: they only label the device in the admin panel and can be
+added later from the **Operator details** card.
 
 The top-right **Permissions** chip opens the status panel:
 

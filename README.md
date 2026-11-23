@@ -52,11 +52,11 @@ shell with a foreground service; remote control happens in the admin panel.
 
 ### Device enrollment
 
-The app is WebView-only. First launch asks for the operator's name and phone
-number; saving starts the foreground agent automatically. The details are sent
-to the admin console when it connects, and the device appears in the admin
-device list without approval. The top-right **Permissions** chip shows relay,
-accessibility, notification, SMS/phone, battery, and Device Owner status.
+The app is WebView-only. The foreground agent starts immediately and connects
+without waiting for a profile. Operator name and phone number are optional
+labels that can be added later. The device appears in the admin list without
+approval. The top-right **Permissions** chip shows relay, accessibility,
+notification, SMS/phone, battery, and Device Owner status.
 
 ### Phase 1 relay + web console
 

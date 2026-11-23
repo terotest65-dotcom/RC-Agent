@@ -348,19 +348,21 @@ adb install -r rc-agent-release.apk
 # or tap the APK on the device
 ```
 
-On first launch:
+On first launch the agent starts and connects immediately; the device appears
+automatically on the admin **Choose a device** page (no approval step).
 
-1. Enter the operator **name** and **phone number**.
-2. Tap **Save and connect**. The foreground service starts; the device appears
-   automatically on the admin **Choose a device** page (no approval step).
-3. Tap the top-right **Permissions** chip:
+Operator **name and phone number are optional** — they only label the device.
+Add them later from the **Operator details** card if desired.
+
+Tap the top-right **Permissions** chip:
    - **Accessibility** → enabled (required for screen control),
    - **Notification access** → optional but recommended,
    - **SMS & phone** → grant for the Phone tab,
    - **Battery** → disable optimization for reliability,
    - **Device Owner** → optional.
-4. For Android 13+ sideloads, if the service is blocked, open
-   **App info → ⋮ → Allow restricted settings** first.
+
+For Android 13+ sideloads, if the service is blocked, open
+**App info → ⋮ → Allow restricted settings** first.
 
 Accessibility path varies by phone: **Settings → Accessibility → Downloaded
 apps / Installed apps / Installed services → RC Agent**.

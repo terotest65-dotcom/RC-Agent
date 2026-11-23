@@ -59,10 +59,10 @@ stretch for touch. Fonts are self-hosted Figtree and IBM Plex Mono.
 
 ## Registration
 
-The agent sends the operator name and phone from its WebView setup form. The
-admin shows **Registered to <name> · <phone>** beneath the device title and on
-the device tile. There is no approval step or separate operator login; the
-profile is informational.
+Operator name and phone are optional labels sent from the agent's WebView.
+The admin shows **Registered to <name> · <phone>** beneath the device title and
+on the device tile when present; otherwise it shows "No operator registration".
+There is no approval step or separate operator login.
 
 ## Phone surface
 

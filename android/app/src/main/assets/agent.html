@@ -400,6 +400,72 @@
         font-size: 12.5px;
       }
 
+      .screen > .card + .card {
+        margin-top: 14px;
+      }
+
+      .profile-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .profile-head h2 {
+        margin: 0 0 4px;
+        font-size: 19px;
+        font-weight: 700;
+      }
+
+      .profile-sub {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12.5px;
+        line-height: 1.5;
+      }
+
+      .profile-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+
+      .profile-summary div {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .profile-summary strong {
+        font-size: 15px;
+      }
+
+      .profile-summary span {
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+
+      .profile-empty {
+        margin: 14px 0 0;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .profile-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .profile-actions .primary {
+        min-height: 42px;
+      }
+
       .sheet-backdrop {
         position: fixed;
         inset: 0;
@@ -551,47 +617,6 @@
     </header>
 
     <main class="screen">
-      <section id="setup" class="card" hidden>
-        <p class="eyebrow">Device enrollment</p>
-        <h1>Connect this device.</h1>
-        <p class="lede">
-          Enter the operator's name and phone number. The agent will connect to
-          the admin console automatically and appear in the device list.
-        </p>
-        <form id="profile-form" novalidate>
-          <label for="name">
-            Name
-            <input
-              id="name"
-              type="text"
-              autocomplete="name"
-              placeholder="e.g. Ravi Kumar"
-              required
-            />
-          </label>
-          <label for="phone">
-            Phone number
-            <input
-              id="phone"
-              type="tel"
-              inputmode="tel"
-              autocomplete="tel"
-              placeholder="+91 98765 43210"
-              required
-            />
-          </label>
-          <p id="form-error" class="error" hidden></p>
-          <button class="primary" type="submit">Save and connect</button>
-          <button id="cancel-setup" class="link" type="button" hidden>
-            Cancel
-          </button>
-        </form>
-        <p class="footnote">
-          The agent runs as a foreground service. Accessibility is needed for
-          remote control; SMS and phone permissions enable the Phone tab.
-        </p>
-      </section>
-
       <section id="status" class="card" hidden>
         <div class="status-head">
           <div>
@@ -632,18 +657,69 @@
             Open accessibility settings
           </button>
         </div>
+      </section>
 
-        <div class="profile-row">
+      <section id="profile-card" class="card profile-card">
+        <div class="profile-head">
           <div>
-            <strong id="profile-name">—</strong>
-            <span id="profile-phone">—</span>
+            <p class="eyebrow">Operator</p>
+            <h2>Operator details</h2>
+            <p class="profile-sub">
+              Optional. Used only to label this device in the admin panel.
+            </p>
           </div>
-          <button id="edit-profile" class="secondary" type="button">
-            Edit details
+          <button id="add-profile" class="secondary" type="button">
+            Add details
           </button>
         </div>
+
+        <div id="profile-summary" class="profile-summary" hidden>
+          <div>
+            <strong id="summary-name">—</strong>
+            <span id="summary-phone">—</span>
+          </div>
+          <button id="edit-profile" class="secondary" type="button">
+            Edit
+          </button>
+        </div>
+
+        <p id="profile-empty" class="profile-empty">
+          No operator details yet. You can add them anytime.
+        </p>
+
+        <form id="profile-form" hidden>
+          <label for="name">
+            Name
+            <input
+              id="name"
+              type="text"
+              autocomplete="name"
+              placeholder="e.g. Ravi Kumar"
+            />
+          </label>
+          <label for="phone">
+            Phone number
+            <input
+              id="phone"
+              type="tel"
+              inputmode="tel"
+              autocomplete="tel"
+              placeholder="+91 98765 43210"
+            />
+          </label>
+          <p id="form-error" class="error" hidden></p>
+          <div class="profile-actions">
+            <button class="primary" type="submit">Save details</button>
+            <button id="cancel-profile" class="secondary" type="button">
+              Cancel
+            </button>
+          </div>
+          <p class="footnote">
+            These details are sent to the admin console but are not required
+            for remote control.
+          </p>
+        </form>
       </section>
-    </main>
 
     <div id="sheet-backdrop" class="sheet-backdrop" hidden>
       <div class="sheet" role="dialog" aria-modal="true" aria-label="Permissions">
@@ -748,13 +824,17 @@
         var bridge = window.RCAndroid || null
         var status = null
         var editing = false
-        var setup = document.getElementById('setup')
         var statusCard = document.getElementById('status')
         var form = document.getElementById('profile-form')
         var nameInput = document.getElementById('name')
         var phoneInput = document.getElementById('phone')
         var errorBox = document.getElementById('form-error')
-        var cancelButton = document.getElementById('cancel-setup')
+        var cancelButton = document.getElementById('cancel-profile')
+        var addProfileButton = document.getElementById('add-profile')
+        var profileSummary = document.getElementById('profile-summary')
+        var profileEmpty = document.getElementById('profile-empty')
+        var summaryName = document.getElementById('summary-name')
+        var summaryPhone = document.getElementById('summary-phone')
         var chip = document.getElementById('perm-chip')
         var backdrop = document.getElementById('sheet-backdrop')
 
@@ -793,22 +873,25 @@
           var profile = status.profile
           var hasProfile = profile && profile.name
 
-          if (!hasProfile && !editing) {
-            setup.hidden = false
-            statusCard.hidden = true
-            cancelButton.hidden = true
-            if (profile) {
-              nameInput.value = profile.name || ''
-              phoneInput.value = profile.phone || ''
-            }
-          } else if (!hasProfile && editing) {
-            setup.hidden = false
-            statusCard.hidden = true
+          statusCard.hidden = false
+
+          if (editing) {
+            form.hidden = false
+            profileSummary.hidden = true
+            profileEmpty.hidden = true
+            addProfileButton.hidden = true
+          } else if (hasProfile) {
+            form.hidden = true
+            profileSummary.hidden = false
+            profileEmpty.hidden = true
+            addProfileButton.hidden = true
+            summaryName.textContent = profile.name
+            summaryPhone.textContent = profile.phone
           } else {
-            setup.hidden = true
-            statusCard.hidden = false
-            document.getElementById('profile-name').textContent = profile.name
-            document.getElementById('profile-phone').textContent = profile.phone
+            form.hidden = true
+            profileSummary.hidden = true
+            profileEmpty.hidden = false
+            addProfileButton.hidden = false
           }
 
           var perms = status.permissions || {}
@@ -899,16 +982,21 @@
           render()
         })
 
-        document.getElementById('edit-profile').addEventListener('click', function () {
-          if (!status || !status.profile) return
+        function openProfileForm() {
           editing = true
-          nameInput.value = status.profile.name || ''
-          phoneInput.value = status.profile.phone || ''
-          setup.hidden = false
-          statusCard.hidden = true
-          cancelButton.hidden = false
+          var profile = status && status.profile
+          nameInput.value = profile ? profile.name || '' : ''
+          phoneInput.value = profile ? profile.phone || '' : ''
           errorBox.hidden = true
-        })
+          form.hidden = false
+          profileSummary.hidden = true
+          profileEmpty.hidden = true
+          addProfileButton.hidden = true
+          nameInput.focus()
+        }
+
+        addProfileButton.addEventListener('click', openProfileForm)
+        document.getElementById('edit-profile').addEventListener('click', openProfileForm)
 
         cancelButton.addEventListener('click', function () {
           editing = false
