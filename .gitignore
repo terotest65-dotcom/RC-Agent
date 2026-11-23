@@ -20,6 +20,7 @@ output.json
 *.keystore
 !debug.keystore
 secrets.properties
+keystore.properties
 .env
 .env.*
 !.env.example

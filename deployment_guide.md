@@ -292,11 +292,47 @@ dev-device
 Release guard: `assembleRelease` fails if the URL is not `wss://` or the token
 is still `dev-device`.
 
-### 5.2 Build
+### 5.2 Signing configuration (this machine)
+
+A release keystore was generated outside the repository:
+
+```text
+~/.config/rc-app/rc-release.jks
+```
+
+The signing config is read from `android/keystore.properties` (gitignored):
+
+```properties
+storeFile=/home/<user>/.config/rc-app/rc-release.jks
+storePassword=...
+keyAlias=rc
+keyPassword=...
+```
+
+`android/keystore.properties.example` shows the format for another build
+machine. **Back up both the keystore and its passwords.** Every update must use
+the same keystore, or installed devices will reject the upgrade.
+
+When `android/keystore.properties` exists, Gradle signs the release APK
+automatically; no separate `apksigner` step is needed.
+
+### 5.3 Build a signed APK
+
+Use the helper script:
+
+```bash
+export RC_RELAY_URL='wss://rc.example.com/ws'
+export RC_DEVICE_TOKEN='<RC_DEVICE_TOKEN>'
+./scripts/build-release.sh
+```
+
+It runs the release build with the URL/token, verifies the signature, prints
+the SHA-256 checksum, and reports the certificate.
+
+Equivalent direct Gradle command:
 
 ```bash
 cd android
-
 ./gradlew :app:assembleRelease \
   -PrcRelayUrl=wss://rc.example.com/ws \
   -PrcDeviceToken='<RC_DEVICE_TOKEN>'
@@ -305,41 +341,35 @@ cd android
 Output:
 
 ```text
-app/build/outputs/apk/release/app-release-unsigned.apk
+android/app/build/outputs/apk/release/app-release.apk
 ```
 
-The release build has R8/minification/shrink enabled. The minified APK is small
-(a few hundred KB), but it is **unsigned** until you sign it.
+The release build has R8/minification/shrink enabled; the APK is typically a
+few hundred KB. It is signed if `keystore.properties` is present.
 
-### 5.3 Create a signing key (once)
+### 5.4 Signing on a new machine (manual)
+
+If `android/keystore.properties` is missing, create a keystore once:
 
 ```bash
 keytool -genkeypair -v \
-  -keystore rc-release.jks \
-  -alias rc \
-  -keyalg RSA \
-  -keysize 4096 \
-  -validity 10000
+  -keystore rc-release.jks -alias rc \
+  -keyalg RSA -keysize 4096 -validity 10000
 ```
 
-Keep `rc-release.jks` and its passwords outside the repository and backed up.
-Every future update must use the same key.
-
-### 5.4 Sign the APK
+Copy `android/keystore.properties.example` to
+`android/keystore.properties`, set the absolute keystore path and passwords,
+then rerun the build. Alternatively, sign an unsigned APK manually:
 
 ```bash
 $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
-  --ks rc-release.jks \
-  --ks-key-alias rc \
+  --ks rc-release.jks --ks-key-alias rc \
   --out rc-agent-release.apk \
-  app/build/outputs/apk/release/app-release-unsigned.apk
-
-$ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose \
-  rc-agent-release.apk
+  android/app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
-Distribute `rc-agent-release.apk` through your internal file share. Users must
-allow installing from that source.
+Distribute the signed APK through your internal file share. Users must allow
+installing from that source.
 
 ### 5.5 Install and enroll
 

@@ -25,13 +25,16 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`
 Release (hardcoded public relay and shared device token):
 
 ```bash
-./gradlew :app:assembleRelease \
-  -PrcRelayUrl=wss://rc.example.com/ws \
-  -PrcDeviceToken='<the same RC_DEVICE_TOKEN as the server>'
+export RC_RELAY_URL='wss://rc.example.com/ws'
+export RC_DEVICE_TOKEN='<the same RC_DEVICE_TOKEN as the server>'
+../scripts/build-release.sh
 ```
 
-Release builds fail if the URL is not `wss://` or the token is still the dev
-default. Use a signed release build for distribution; see
+`android/keystore.properties` (gitignored) points at the release keystore; when
+present, `assembleRelease` produces the signed
+`app/build/outputs/apk/release/app-release.apk`. Copy
+`keystore.properties.example` on a new machine. Release builds fail if the URL
+is not `wss://` or the token is still the dev default. See
 [`../deployment_guide.md`](../deployment_guide.md) and
 [`../docs/production.md`](../docs/production.md).
 
