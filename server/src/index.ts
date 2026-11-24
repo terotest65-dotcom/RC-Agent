@@ -673,6 +673,11 @@ wss.on('connection', (ws, req) => {
   let role: Role | null = null
   let deviceId: string | null = null
 
+  ;(ws as any).isAlive = true
+  ws.on('pong', () => {
+    ;(ws as any).isAlive = true
+  })
+
   const fail = (message: string) => send(ws, { t: 'error', message })
 
   ws.on('message', (raw) => {
@@ -732,6 +737,15 @@ wss.on('connection', (ws, req) => {
           probes: existing?.probes ?? {}
         }
         devices.set(id, device)
+        // The same device may reconnect before its old socket notices the drop.
+        // Drop the stale socket so it cannot linger or race the new one.
+        if (existing && existing.ws !== ws) {
+          try {
+            existing.ws.terminate()
+          } catch {
+            // already closed
+          }
+        }
         send(ws, { t: 'helloOk', deviceId: id })
         broadcast({ t: 'device', device: summary(device) })
         log(`device connected: ${id}`)
@@ -1095,13 +1109,18 @@ wss.on('connection', (ws, req) => {
 })
 
 const heartbeat = setInterval(() => {
-  for (const device of devices.values()) {
-    if (device.online && device.ws.readyState === device.ws.OPEN) device.ws.ping()
+  for (const ws of wss.clients) {
+    if (ws.readyState !== ws.OPEN) continue
+    // Terminate sockets that missed the previous ping so the device list
+    // reflects reality and the agent reconnects instead of looking online.
+    if ((ws as any).isAlive === false) {
+      ws.terminate()
+      continue
+    }
+    ;(ws as any).isAlive = false
+    ws.ping()
   }
-  for (const admin of admins) {
-    if (admin.readyState === admin.OPEN) admin.ping()
-  }
-}, 25_000)
+}, 30_000)
 
 setInterval(() => {
   const now = Date.now()

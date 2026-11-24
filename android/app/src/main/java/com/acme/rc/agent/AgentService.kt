@@ -57,6 +57,7 @@ import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -68,6 +69,7 @@ class AgentService : Service() {
         private const val TAG = "RcAgentService"
         const val ACTION_STOP = "com.acme.rc.agent.STOP"
         const val ACTION_SEND_PROFILE = "com.acme.rc.agent.SEND_PROFILE"
+        const val ACTION_RECONNECT = "com.acme.rc.agent.RECONNECT"
         private const val CHANNEL_ID = "rc_agent"
         private const val NOTIFICATION_ID = 41
         private const val MASK_CHARS = "•●○◦∙·⋅▪▫■□◆◇‣⁃⦁⦿⊙◉*"
@@ -93,6 +95,13 @@ class AgentService : Service() {
 
     @Volatile
     private var socket: WebSocket? = null
+
+    /**
+     * Identifies the active socket. Callbacks from an older socket (closed by a
+     * reconnect) must not report state or schedule another reconnect, otherwise
+     * each reconnect would close the fresh connection and flap forever.
+     */
+    private val connectionSerial = AtomicInteger(0)
 
     @Volatile
     private var shouldReconnect = false
@@ -141,6 +150,14 @@ class AgentService : Service() {
         val url = AgentConfig.serverUrl()
         AgentConnection.serverUrl = url
         AgentConnection.deviceId = AgentConfig.deviceId(this)
+
+        // Opening the app or saving a profile starts the service again. Do not
+        // tear down a live socket unless the operator explicitly reconnects.
+        val forceReconnect = intent?.action == ACTION_RECONNECT
+        if (!forceReconnect && AgentConnection.connected && socket != null) {
+            return START_STICKY
+        }
+
         AgentConnection.status = "Connecting to $url…"
         shouldReconnect = true
         connect(url)
@@ -155,8 +172,10 @@ class AgentService : Service() {
         recordAppPackage = null
         appEntered = false
         reconnectJob?.cancel()
-        socket?.close(1000, "service stopped")
+        connectionSerial.incrementAndGet()
+        val previous = socket
         socket = null
+        previous?.close(1000, "service stopped")
         scope.cancel()
         AgentConnection.connected = false
         AgentConnection.status = "Stopped"
@@ -169,12 +188,15 @@ class AgentService : Service() {
 
     private fun connect(url: String) {
         reconnectJob?.cancel()
-        socket?.close(1000, "reconnect")
+        val serial = connectionSerial.incrementAndGet()
+
+        val previous = socket
         socket = null
+        previous?.close(1000, "reconnect")
 
         AgentConnection.status = "Connecting to $url…"
         val request = Request.Builder().url(url).build()
-        socket = client.newWebSocket(request, Listener())
+        socket = client.newWebSocket(request, Listener(serial))
     }
 
     private fun scheduleReconnect() {
@@ -190,8 +212,14 @@ class AgentService : Service() {
         }
     }
 
-    private inner class Listener : WebSocketListener() {
+    private inner class Listener(private val serial: Int) : WebSocketListener() {
+        private fun isCurrent(): Boolean = serial == connectionSerial.get()
+
         override fun onOpen(webSocket: WebSocket, response: Response) {
+            if (!isCurrent()) {
+                webSocket.close(1000, "stale")
+                return
+            }
             reconnectAttempt = 0
             AgentConnection.connected = true
             AgentConnection.status = "Connected"
@@ -206,6 +234,7 @@ class AgentService : Service() {
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
+            if (!isCurrent()) return
             try {
                 handleMessage(JSONObject(text))
             } catch (t: Throwable) {
@@ -214,6 +243,7 @@ class AgentService : Service() {
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            if (!isCurrent()) return
             AgentConnection.connected = false
             AgentConnection.status = "Connection failed: ${t.message ?: t.javaClass.simpleName}"
             updateNotification("Disconnected")
@@ -221,6 +251,7 @@ class AgentService : Service() {
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            if (!isCurrent()) return
             AgentConnection.connected = false
             AgentConnection.status = "Disconnected: $reason"
             updateNotification("Disconnected")

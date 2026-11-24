@@ -96,7 +96,10 @@ class MainActivity : Activity() {
         webView.evaluateJavascript("window.rcRefresh && window.rcRefresh()", null)
     }
 
-    private fun startAgentService(sendProfileOnly: Boolean = false) {
+    private fun startAgentService(
+        sendProfileOnly: Boolean = false,
+        forceReconnect: Boolean = false
+    ) {
         try {
             val intent = Intent(this, AgentService::class.java)
             if (sendProfileOnly) {
@@ -104,6 +107,7 @@ class MainActivity : Activity() {
                     startService(intent.setAction(AgentService.ACTION_SEND_PROFILE))
                 }
             } else {
+                if (forceReconnect) intent.action = AgentService.ACTION_RECONNECT
                 ContextCompat.startForegroundService(this, intent)
             }
         } catch (_: Throwable) {
@@ -192,7 +196,7 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun startAgent() {
-            runOnUiThread { startAgentService() }
+            runOnUiThread { startAgentService(forceReconnect = true) }
         }
 
         @JavascriptInterface
