@@ -132,6 +132,15 @@ class AgentService : Service() {
         startForegroundCompat("Starting…")
         AgentConnection.serverUrl = AgentConfig.serverUrl()
         AgentConnection.deviceId = AgentConfig.deviceId(this)
+
+        // Keep the admin panel's accessibility/state view current even when the
+        // user changes permissions after the agent connected.
+        scope.launch {
+            while (true) {
+                delay(10_000)
+                if (AgentConnection.connected) socket?.let { sendState(it) }
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

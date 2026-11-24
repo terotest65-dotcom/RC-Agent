@@ -391,6 +391,9 @@ Tap the top-right **Status** indicator to open permissions:
    - **Battery** → disable optimization for reliability,
    - **Device Owner** → optional.
 
+> Android disables accessibility services when an APK is installed or updated.
+> After every update, re-enable **RC Agent control** in Settings → Accessibility.
+
 For Android 13+ sideloads, if the service is blocked, open
 **App info → ⋮ → Allow restricted settings** first.
 

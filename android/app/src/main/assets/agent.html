@@ -395,6 +395,10 @@
         margin-top: 9px;
       }
 
+      .setup-warning {
+        margin: 0 0 14px;
+      }
+
       .profile-row {
         display: flex;
         align-items: center;
@@ -641,6 +645,18 @@
     </header>
 
     <main class="screen">
+      <section id="a11y-banner" class="warn-card setup-warning" hidden>
+        <strong>Accessibility is off</strong>
+        Capture, app control, and recording will not work until you enable
+        <b>RC Agent control</b> in Android accessibility settings. On
+        Android 13+, if the toggle is greyed out, first open App info → ⋮ →
+        Allow restricted settings.
+        <br />
+        <button class="secondary" type="button" onclick="openAccessibility()">
+          Enable accessibility
+        </button>
+      </section>
+
       <section id="profile-card" class="card profile-card">
         <div class="profile-head">
           <div>
@@ -861,6 +877,7 @@
         var summaryPhone = document.getElementById('summary-phone')
         var chip = document.getElementById('perm-chip')
         var backdrop = document.getElementById('sheet-backdrop')
+        var a11yBanner = document.getElementById('a11y-banner')
 
         function readStatus() {
           try {
@@ -935,6 +952,7 @@
 
           document.getElementById('accessibility-warning').hidden =
             !!status.accessibility
+          a11yBanner.hidden = !!status.accessibility
 
           var telephonyOk =
             perms.readSms && perms.sendSms && perms.phoneState && perms.calls

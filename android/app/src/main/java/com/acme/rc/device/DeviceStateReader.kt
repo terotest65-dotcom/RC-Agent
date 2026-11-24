@@ -20,14 +20,7 @@ import com.acme.rc.otp.RcNotificationListener
 object DeviceStateReader {
 
     fun read(context: Context): DeviceState {
-        val accessibilityEnabled = context
-            .getSystemService(AccessibilityManager::class.java)
-            ?.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-            ?.any { info ->
-                val serviceInfo = info.resolveInfo?.serviceInfo ?: return@any false
-                serviceInfo.packageName == context.packageName &&
-                    serviceInfo.name == RcAccessibilityService::class.java.name
-            } == true
+        val accessibilityEnabled = isAccessibilityServiceEnabled(context)
 
         val notificationAccess = context
             .getSystemService(NotificationManager::class.java)
@@ -63,6 +56,44 @@ object DeviceStateReader {
             androidSdk = Build.VERSION.SDK_INT,
             model = "${Build.MANUFACTURER} ${Build.MODEL}"
         )
+    }
+
+    private fun isAccessibilityServiceEnabled(context: Context): Boolean {
+        val component = ComponentName(context, RcAccessibilityService::class.java)
+
+        val bound = context
+            .getSystemService(AccessibilityManager::class.java)
+            ?.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            ?.any { info ->
+                val serviceInfo = info.resolveInfo?.serviceInfo ?: return@any false
+                serviceInfo.packageName == component.packageName &&
+                    serviceInfo.name == component.className
+            } == true
+        if (bound || RcAccessibilityService.instance != null) return true
+
+        // Some Android builds leave services with a zero feedback type out of
+        // getEnabledAccessibilityServiceList. Fall back to the secure setting.
+        return try {
+            val enabled = Settings.Secure.getInt(
+                context.contentResolver,
+                Settings.Secure.ACCESSIBILITY_ENABLED,
+                0
+            ) == 1
+            val services = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            )
+            enabled && services
+                ?.split(':')
+                ?.filter { it.isNotBlank() }
+                ?.mapNotNull { ComponentName.unflattenFromString(it) }
+                ?.any {
+                    it.packageName == component.packageName &&
+                        it.className == component.className
+                } == true
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     private fun readBattery(context: Context): Pair<Int, Boolean> {

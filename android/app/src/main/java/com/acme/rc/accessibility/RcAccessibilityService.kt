@@ -11,6 +11,7 @@ import android.graphics.RectF
 import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -36,6 +37,8 @@ import kotlin.math.min
 class RcAccessibilityService : AccessibilityService() {
 
     companion object {
+        private const val TAG = "RcAccessibility"
+
         @Volatile
         var instance: RcAccessibilityService? = null
             private set
@@ -60,6 +63,7 @@ class RcAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        Log.i(TAG, "accessibility service connected")
         val info = serviceInfo ?: return
         info.flags = info.flags or
             AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
@@ -90,6 +94,7 @@ class RcAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         if (instance === this) instance = null
+        Log.i(TAG, "accessibility service destroyed")
         super.onDestroy()
     }
 

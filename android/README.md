@@ -79,6 +79,11 @@ falls back to the standard accessibility page. The exact list label varies:
 13+, a sideloaded app may need **App info → ⋮ → Allow restricted settings**
 first.
 
+> **After every APK install/update, Android turns the accessibility service off.**
+> Re-enable **RC Agent control** in Settings → Accessibility, otherwise capture,
+> taps, and recording will not work and the admin panel will show accessibility
+> as off.
+
 ADB development shortcut:
 
 ```bash
