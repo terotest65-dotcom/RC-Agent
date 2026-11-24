@@ -48,13 +48,20 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.acme.rc/.MainActivity
 ```
 
-The foreground service starts immediately on launch and connects with the
-hardcoded relay URL and shared device token. The device appears automatically
-in the admin device list. There is no relay URL field and no approval step.
+On first launch the app runs a short setup flow before the agent starts:
 
-The WebView opens directly on the **Operator details** card. Operator **name and
-phone number are optional**: they only label the device in the admin panel and
-can be added later.
+1. A dialog asks for **accessibility**, with an **Open settings** deeplink.
+2. Once accessibility is enabled, the app requests **notification, SMS, phone,
+   and call** permissions.
+3. The foreground service then starts and connects with the hardcoded relay URL
+   and shared device token.
+
+The device appears automatically in the admin device list. There is no relay URL
+field and no approval step.
+
+After setup, the WebView opens directly on the **Operator details** card.
+Operator **name and phone number are optional**: they only label the device in
+the admin panel and can be added later.
 
 The top-right **Status** indicator reflects the agent state and opens the status
 and permissions panel:
@@ -66,9 +73,10 @@ and permissions panel:
 - Battery/stay-awake status
 - Device Owner (optional)
 
-The app starts the service on launch when a profile exists, and `BootReceiver`
+After setup, the app starts the service on every launch, and `BootReceiver`
 attempts to start it after reboot. Android may restrict boot-time foreground
-service starts; opening the app retries.
+service starts; opening the app retries (and runs setup again if accessibility
+was cleared by an update).
 
 ## Enable accessibility
 

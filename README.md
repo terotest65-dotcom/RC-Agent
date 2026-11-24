@@ -52,12 +52,13 @@ shell with a foreground service; remote control happens in the admin panel.
 
 ### Device enrollment
 
-The app is WebView-only. The foreground agent starts immediately and connects
-without waiting for a profile. Operator name and phone number are optional
-labels that can be added later. The device appears in the admin list without
-approval. The app opens on the operator page; the top-right **Status** indicator
-shows the agent connection state and opens relay, accessibility, notification,
-SMS/phone, battery, and Device Owner status.
+The app is WebView-only and runs a first-launch setup flow: enable accessibility
+from a dialog, grant notification/SMS/phone/call permissions, then the
+foreground agent starts and connects. Operator name and phone number are
+optional labels that can be added later. The device appears in the admin list
+without approval. After setup, the app opens on the operator page; the top-right
+**Status** indicator shows the agent connection state and opens relay,
+accessibility, notification, SMS/phone, battery, and Device Owner status.
 
 ### Phase 1 relay + web console
 

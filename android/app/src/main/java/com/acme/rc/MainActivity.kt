@@ -2,16 +2,20 @@ package com.acme.rc
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -29,6 +33,21 @@ import org.json.JSONObject
 class MainActivity : Activity() {
 
     private lateinit var webView: WebView
+    private var setupDialog: AlertDialog? = null
+    private var setupStage = SetupStage.ACCESSIBILITY
+    private var permissionsPending = false
+    private val setupHandler = Handler(Looper.getMainLooper())
+
+    private val accessibilityPoll = object : Runnable {
+        override fun run() {
+            if (setupStage != SetupStage.ACCESSIBILITY) return
+            if (DeviceStateReader.isAccessibilityEnabled(this@MainActivity)) {
+                advanceSetup()
+            } else if (!isFinishing && !isDestroyed) {
+                setupHandler.postDelayed(this, 1000)
+            }
+        }
+    }
 
     companion object {
         private const val REQUEST_PERMISSIONS = 1001
@@ -42,6 +61,8 @@ class MainActivity : Activity() {
             Manifest.permission.CALL_PHONE
         )
     }
+
+    private enum class SetupStage { ACCESSIBILITY, PERMISSIONS, DONE }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,17 +85,25 @@ class MainActivity : Activity() {
         }
         setContentView(webView)
 
-        // Connect immediately. The operator profile is optional and must not
-        // gate remote enrollment.
-        startAgentService()
+        // Gate the agent behind accessibility and the runtime permissions.
+        advanceSetup()
     }
 
     override fun onResume() {
         super.onResume()
         refreshWeb()
+        if (setupStage != SetupStage.DONE) advanceSetup()
+    }
+
+    override fun onPause() {
+        setupHandler.removeCallbacks(accessibilityPoll)
+        super.onPause()
     }
 
     override fun onDestroy() {
+        setupHandler.removeCallbacks(accessibilityPoll)
+        setupDialog?.dismiss()
+        setupDialog = null
         if (::webView.isInitialized) {
             webView.removeJavascriptInterface("RCAndroid")
             webView.destroy()
@@ -88,7 +117,101 @@ class MainActivity : Activity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_PERMISSIONS) {
+            permissionsPending = false
+            refreshWeb()
+            if (RUNTIME_PERMISSIONS.any { !granted(it) }) {
+                Toast.makeText(
+                    this,
+                    "You can grant the remaining permissions from Status.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            advanceSetup()
+        }
+    }
+
+    /**
+     * Accessibility -> runtime permissions -> start the foreground agent.
+     * Opening the app never starts the agent until these setup steps resolve.
+     */
+    private fun advanceSetup() {
+        if (setupStage == SetupStage.DONE) return
+
+        if (!DeviceStateReader.isAccessibilityEnabled(this)) {
+            setupStage = SetupStage.ACCESSIBILITY
+            showAccessibilityDialog()
+            return
+        }
+
+        dismissAccessibilityDialog()
+        setupStage = SetupStage.PERMISSIONS
+
+        if (permissionsPending) return
+
+        val missing = RUNTIME_PERMISSIONS.filterNot { granted(it) }
+        if (missing.isNotEmpty() && !AgentConfig.hasAskedPermissions(this)) {
+            AgentConfig.markPermissionsAsked(this)
+            permissionsPending = true
+            ActivityCompat.requestPermissions(
+                this,
+                missing.toTypedArray(),
+                REQUEST_PERMISSIONS
+            )
+            return
+        }
+
+        finishSetup()
+    }
+
+    private fun finishSetup() {
+        setupStage = SetupStage.DONE
+        permissionsPending = false
+        dismissAccessibilityDialog()
+        startAgentService()
         refreshWeb()
+    }
+
+    private fun showAccessibilityDialog() {
+        if (setupDialog?.isShowing == true) {
+            restartAccessibilityPoll()
+            return
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Enable accessibility")
+            .setMessage(
+                "RC Agent needs accessibility to capture the screen, tap, and " +
+                    "record macros.\n\n" +
+                    "Tap \"Open settings\" and enable \"RC Agent control\".\n\n" +
+                    "On Android 13+, if the toggle is greyed out, open App info → " +
+                    "⋮ → Allow restricted settings first."
+            )
+            .setPositiveButton("Open settings") { _, _ ->
+                DeviceStateReader.openAccessibilitySettings(this)
+            }
+            .setNegativeButton("Not now") { d, _ -> d.dismiss() }
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnDismissListener {
+            if (setupDialog === dialog) setupDialog = null
+            setupHandler.removeCallbacks(accessibilityPoll)
+        }
+        setupDialog = dialog
+        dialog.show()
+        restartAccessibilityPoll()
+    }
+
+    private fun dismissAccessibilityDialog() {
+        setupHandler.removeCallbacks(accessibilityPoll)
+        setupDialog?.dismiss()
+        setupDialog = null
+    }
+
+    private fun restartAccessibilityPoll() {
+        setupHandler.removeCallbacks(accessibilityPoll)
+        setupHandler.postDelayed(accessibilityPoll, 1000)
     }
 
     private fun refreshWeb() {
@@ -189,14 +312,24 @@ class MainActivity : Activity() {
             AgentConfig.saveProfile(this@MainActivity, cleanName, phone.trim())
             runOnUiThread {
                 refreshWeb()
-                startAgentService(sendProfileOnly = AgentConnection.connected)
+                if (setupStage == SetupStage.DONE) {
+                    startAgentService(sendProfileOnly = AgentConnection.connected)
+                } else {
+                    advanceSetup()
+                }
             }
             return true
         }
 
         @JavascriptInterface
         fun startAgent() {
-            runOnUiThread { startAgentService(forceReconnect = true) }
+            runOnUiThread {
+                if (setupStage == SetupStage.DONE) {
+                    startAgentService(forceReconnect = true)
+                } else {
+                    advanceSetup()
+                }
+            }
         }
 
         @JavascriptInterface

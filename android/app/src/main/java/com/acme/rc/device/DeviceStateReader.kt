@@ -20,7 +20,7 @@ import com.acme.rc.otp.RcNotificationListener
 object DeviceStateReader {
 
     fun read(context: Context): DeviceState {
-        val accessibilityEnabled = isAccessibilityServiceEnabled(context)
+        val accessibilityEnabled = isAccessibilityEnabled(context)
 
         val notificationAccess = context
             .getSystemService(NotificationManager::class.java)
@@ -58,7 +58,7 @@ object DeviceStateReader {
         )
     }
 
-    private fun isAccessibilityServiceEnabled(context: Context): Boolean {
+    fun isAccessibilityEnabled(context: Context): Boolean {
         val component = ComponentName(context, RcAccessibilityService::class.java)
 
         val bound = context

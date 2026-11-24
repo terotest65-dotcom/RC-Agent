@@ -378,16 +378,18 @@ adb install -r rc-agent-release.apk
 # or tap the APK on the device
 ```
 
-On first launch the agent starts and connects immediately; the device appears
+On first launch a dialog asks for **accessibility**; tap **Open settings** and
+enable **RC Agent control**. When you return, the app asks for notification,
+SMS, phone, and call permissions. The agent then starts and the device appears
 automatically on the admin **Choose a device** page (no approval step).
 
 Operator **name and phone number are optional** — they only label the device.
 Add them later from the **Operator details** card if desired.
 
-Tap the top-right **Status** indicator to open permissions:
-   - **Accessibility** → enabled (required for screen control),
+The top-right **Status** indicator reopens the permissions panel:
+   - **Accessibility** → required for screen control,
    - **Notification access** → optional but recommended,
-   - **SMS & phone** → grant for the Phone tab,
+   - **SMS & phone** → Phone tab and OTP fallback,
    - **Battery** → disable optimization for reliability,
    - **Device Owner** → optional.
 

@@ -12,6 +12,7 @@ object AgentConfig {
     private const val KEY_PHONE = "operator_phone"
     private const val KEY_CONSENT_AT = "consent_at"
     private const val KEY_TERMS = "terms_version"
+    private const val KEY_PERMISSIONS_ASKED = "permissions_asked"
 
     fun serverUrl(): String = BuildConfig.RELAY_URL
 
@@ -31,6 +32,13 @@ object AgentConfig {
             .putLong(KEY_CONSENT_AT, System.currentTimeMillis())
             .putInt(KEY_TERMS, 1)
             .apply()
+    }
+
+    fun hasAskedPermissions(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_PERMISSIONS_ASKED, false)
+
+    fun markPermissionsAsked(context: Context) {
+        prefs(context).edit().putBoolean(KEY_PERMISSIONS_ASKED, true).apply()
     }
 
     fun profileJson(context: Context): JSONObject? {
