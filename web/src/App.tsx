@@ -47,6 +47,7 @@ type IconName =
   | 'alert'
   | 'sun'
   | 'unlock'
+  | 'lock'
 
 const TABS: Array<{ key: Tab; label: string; icon: IconName }> = [
   { key: 'control', label: 'Control', icon: 'control' },
@@ -1055,6 +1056,17 @@ export default function App() {
                   Unlock
                 </button>
                 <button
+                  className="btn btn-secondary"
+                  disabled={actionDisabled}
+                  title="Lock the device immediately."
+                  onClick={() =>
+                    sendCmd(selected.id, 'globalAction', { name: 'lock' })
+                  }
+                >
+                  <Icon name="lock" />
+                  Lock
+                </button>
+                <button
                   className="btn btn-primary"
                   disabled={actionDisabled}
                   onClick={() => sendCmd(selected.id, 'snapshot')}
@@ -1708,6 +1720,13 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
         <svg {...common} aria-hidden="true">
           <rect x="4" y="10" width="16" height="11" rx="2" />
           <path d="M8 10V7a4 4 0 0 1 7.5-2" />
+        </svg>
+      )
+    case 'lock':
+      return (
+        <svg {...common} aria-hidden="true">
+          <rect x="4" y="10" width="16" height="11" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
         </svg>
       )
     default:

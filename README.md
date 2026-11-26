@@ -84,8 +84,9 @@ right-side activity drawer:
 - **Control** — apps, snapshot with hotspots, tap/type/scroll, back/home/
   recents, a composer that types into the focused field on the device
   (`Insert` = set text, `Insert + Enter` = set text and press the IME enter key),
-  plus **Wake** and **Unlock** actions and a **Device unlock** panel. Wake
-  works while the screen is off. Unlock dismisses a swipe/no-security keyguard,
+  plus **Wake**, **Lock**, and **Unlock** actions and a **Device unlock** panel.
+  Wake works while the screen is off. Lock uses `GLOBAL_ACTION_LOCK_SCREEN`.
+  Unlock dismisses a swipe/no-security keyguard,
   and for a secure lock it can enter a PIN, password, or pattern stored on the
   device — PIN keypads are tapped with accessibility gestures, password fields
   are filled with set-text, and patterns are traced through the 3×3 dots. Device

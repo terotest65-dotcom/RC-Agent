@@ -183,7 +183,7 @@ whether a per-app credential exists.
 
 **Preflight must check:** `KeyguardManager.isKeyguardLocked`, `isDeviceSecure`, screen on, battery/charging, accessibility enabled, notification access (if OTP), target app installed and version. If a check fails, return `preflight_failed` with reasons and do not start the run.
 
-**Note:** `GLOBAL_ACTION_LOCK_SCREEN` can lock the device, but there is no global "unlock" action.
+**Note:** `GLOBAL_ACTION_LOCK_SCREEN` backs the panel's **Lock** button; there is no global "unlock" action.
 
 **Device Owner (optional — both provisioning paths supported):**
 

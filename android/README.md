@@ -121,6 +121,8 @@ device charging, and disable battery optimization.
 
 - **Wake** uses a bright-screen wake lock with `ACQUIRE_CAUSES_WAKEUP` and works
   while the display is asleep.
+- **Lock** uses `GLOBAL_ACTION_LOCK_SCREEN` through the accessibility service
+  and locks the device immediately.
 - **Unlock** opens an invisible activity over the keyguard and calls
   `KeyguardManager.requestDismissKeyguard`.
   - Swipe/None locks dismiss without interaction.
