@@ -142,7 +142,7 @@ device charging, and disable battery optimization.
     page opens automatically. It also opens from the one-time notification
     after the first manual unlock and from the status sheet's **Enroll** button.
     The screen detects the lock type and shows the matching input: a numeric
-    PIN field, a 3×3 pattern pad, or a password field. The operator can override
+    PIN field, a drag-to-draw 3×3 pattern pad, or a password field. The operator can override
     the detected type. The credential is stored with the same Keystore key and
     never sent through the relay. Clearing the credential re-arms the prompt
     and the automatic open.

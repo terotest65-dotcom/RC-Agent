@@ -14,8 +14,8 @@
     <string name="enroll_unknown">Couldn\'t detect the lock type. Choose PIN, Pattern, or Password.</string>
     <string name="enroll_pin_hint">4–16 digit PIN</string>
     <string name="enroll_password_hint">Password</string>
-    <string name="enroll_pattern_empty">Tap the dots in order.</string>
-    <string name="enroll_pattern_sequence">Sequence: %1$s</string>
+    <string name="enroll_pattern_empty">Draw your pattern.</string>
+    <string name="enroll_pattern_count">%1$d dots selected.</string>
     <string name="enroll_pattern_clear">Clear</string>
     <string name="enroll_show">Show credential</string>
     <string name="enroll_save">Save</string>

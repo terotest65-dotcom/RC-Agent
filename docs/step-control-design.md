@@ -155,7 +155,7 @@ re-arms the notification and the automatic open.
 
 The accessibility service classifies the visible bouncer as a PIN keypad, a
 pattern view, or a password field and caches that type. The enrollment screen
-shows the matching input: a numeric PIN field, a 3×3 pattern pad, or a password
+shows the matching input: a numeric PIN field, a drag-to-draw 3×3 pattern pad, or a password
 field. The operator can override the detected type; if classification never
 happened, the screen defaults to the password field and offers the three
 choices.

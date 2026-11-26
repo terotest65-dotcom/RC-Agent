@@ -34,10 +34,10 @@ class EnrollUnlockActivity : Activity() {
     private lateinit var input: EditText
     private lateinit var show: CheckBox
     private lateinit var patternSequence: TextView
+    private lateinit var patternPad: PatternPadView
     private lateinit var error: TextView
 
     private var selectedType = LockType.PASSWORD
-    private val sequence = StringBuilder()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,6 +54,7 @@ class EnrollUnlockActivity : Activity() {
         input = findViewById(R.id.enroll_secret)
         show = findViewById(R.id.enroll_show)
         patternSequence = findViewById(R.id.enroll_pattern_sequence)
+        patternPad = findViewById(R.id.enroll_pattern_pad)
         error = findViewById(R.id.enroll_error)
 
         val save = findViewById<Button>(R.id.enroll_save)
@@ -68,22 +69,9 @@ class EnrollUnlockActivity : Activity() {
             input.setSelection(input.text.length)
         }
 
-        listOf(
-            R.id.enroll_dot_1 to '1',
-            R.id.enroll_dot_2 to '2',
-            R.id.enroll_dot_3 to '3',
-            R.id.enroll_dot_4 to '4',
-            R.id.enroll_dot_5 to '5',
-            R.id.enroll_dot_6 to '6',
-            R.id.enroll_dot_7 to '7',
-            R.id.enroll_dot_8 to '8',
-            R.id.enroll_dot_9 to '9'
-        ).forEach { (id, digit) ->
-            findViewById<Button>(id).setOnClickListener { appendDot(digit) }
-        }
+        patternPad.onPatternChanged = { pattern -> updatePatternHint(pattern) }
         findViewById<Button>(R.id.enroll_pattern_clear).setOnClickListener {
-            sequence.clear()
-            updateSequence()
+            patternPad.clear()
         }
 
         save.setOnClickListener { save() }
@@ -139,7 +127,7 @@ class EnrollUnlockActivity : Activity() {
                 input.text.clear()
                 show.isChecked = false
                 hideKeyboard()
-                updateSequence()
+                patternPad.clear()
             }
             LockType.PIN -> {
                 secretGroup.visibility = View.VISIBLE
@@ -164,21 +152,11 @@ class EnrollUnlockActivity : Activity() {
         }
     }
 
-    private fun appendDot(digit: Char) {
-        if (sequence.length >= 9) return
-        if (sequence.toString().contains(digit)) return
-        sequence.append(digit)
-        updateSequence()
-    }
-
-    private fun updateSequence() {
-        patternSequence.text = if (sequence.isEmpty()) {
+    private fun updatePatternHint(pattern: String) {
+        patternSequence.text = if (pattern.isEmpty()) {
             getString(R.string.enroll_pattern_empty)
         } else {
-            getString(
-                R.string.enroll_pattern_sequence,
-                sequence.toString().toCharArray().joinToString("-")
-            )
+            getString(R.string.enroll_pattern_count, pattern.length)
         }
     }
 
@@ -193,7 +171,7 @@ class EnrollUnlockActivity : Activity() {
 
     private fun save() {
         val secret = when (selectedType) {
-            LockType.PATTERN -> sequence.toString()
+            LockType.PATTERN -> patternPad.sequence
             else -> input.text.toString()
         }
         val valid = when (selectedType) {
