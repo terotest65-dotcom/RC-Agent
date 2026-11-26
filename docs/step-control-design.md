@@ -161,9 +161,9 @@ the bottom. On a fresh setup the cache can be empty until the device is locked
 and unlocked once; the page re-checks on resume, and the operator can choose a
 type at the bottom at any time.
 
-**App-level locks.** The `appUnlock` command targets the foreground app and is
-the one-click counterpart to the `enterPin` macro step. App locks come in two
-shapes:
+**App-level locks.** The `appUnlock` command targets the foreground app; the
+`{ "op": "appUnlock", "package": "..." }` macro step runs the same flow. App
+locks come in two shapes:
 
 - A system app-lock window that offers fingerprint and a “Use
   password/PIN/pattern/screen lock” fallback (MIUI/POCO App lock, Samsung).
@@ -440,6 +440,7 @@ class OtpNotificationListener : NotificationListenerService() {
 | Op | Purpose |
 |---|---|
 | `launch` | Start an app or open a deep link/URI |
+| `appUnlock` | Run the app-lock flow for a package; no-op when already unlocked |
 | `waitFor` | Poll until a selector appears |
 | `waitForIdle` | Wait until no content-change events for N ms |
 | `tap` | Click a selector |
@@ -471,6 +472,17 @@ field with `ACTION_SET_TEXT` when the lock screen is a text field. The optional
 `selector` scopes the keypad search to a container, and `submit` (default true)
 presses the keypad's Enter/check key or the IME action. The secret is never
 included in the run report.
+
+App-lock prompts are handled inside the macro before navigation:
+
+```json
+{ "op": "appUnlock", "package": "com.phonepe.app" }
+```
+
+`appUnlock` runs the same flow as the panel action and is a **no-op success**
+when no app-lock screen is showing, so it is safe to place after `launch` even
+if the app was already unlocked. Use `enterPin` for the UPI/app PIN that
+follows the lock.
 
 `FLAG_SECURE` apps still block screenshots but do not block accessibility input;
 custom canvas keypads that expose no digit nodes still need raw `tap` steps.

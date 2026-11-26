@@ -169,6 +169,9 @@ The **App unlock** panel targets the foreground app.
 - App locks with their own credential read a per-app value stored from the
   panel, keyed by package and encrypted with a separate Keystore key. Leave the
   per-app field empty to use the device credential.
+- In a macro, place `{ "op": "appUnlock", "package": "com.example.app" }`
+  immediately after `launch`. It runs the same flow and succeeds without action
+  when the app is already unlocked.
 - The credential screen is detected in the foreground window: a square pattern
   view, a 3-column digit keypad, or an editable field. One attempt.
 - Biometric-only locks, custom canvas keypads with no accessible digits, and

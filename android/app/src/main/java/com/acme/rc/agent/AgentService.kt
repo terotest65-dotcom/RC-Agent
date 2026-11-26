@@ -1056,6 +1056,13 @@ class AgentService : Service() {
                 service.awaitPackage(pkg, 5000)
                 delay(800)
             }
+            "appUnlock" -> {
+                val pkg = step.pkg
+                    ?: return StepResult("failed", "appUnlock requires package")
+                val result = service.unlockApp(pkg)
+                if (!result.ok) return StepResult("failed", result.detail)
+                delay(800)
+            }
             "waitFor" -> {
                 val selector = step.selector
                     ?: return StepResult("failed", "waitFor requires selector")

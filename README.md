@@ -113,7 +113,9 @@ right-side activity drawer:
   raw code). Requires the phone/SMS permissions on the agent.
 - **Macros** — JSON macro editor, parameters, save/delete, run. App-level PIN
   screens use an `enterPin` step with a `secretRef`; it taps a labeled keypad
-  or fills a text field without exposing the PIN in the run report.
+  or fills a text field without exposing the PIN in the run report. Add
+  `appUnlock` after `launch` to handle an app-lock prompt; it is a no-op when
+  the app is already unlocked.
 - **Recorder** — passive per-app recording: click **Record** on an app, then
   open that app on the device yourself. Leaving the app or pressing
   **Stop & save** saves the macro. Live text/tap/scroll feed, text-only

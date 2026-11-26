@@ -210,6 +210,7 @@ export interface Selector {
 
 export type MacroOp =
   | 'launch'
+  | 'appUnlock'
   | 'waitFor'
   | 'waitForIdle'
   | 'waitForOtp'

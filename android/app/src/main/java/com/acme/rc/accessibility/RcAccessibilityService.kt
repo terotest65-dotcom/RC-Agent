@@ -1054,6 +1054,12 @@ class RcAccessibilityService : AccessibilityService() {
     suspend fun unlockApp(targetPackage: String? = null): PinUnlockResult =
         withContext(Dispatchers.Default) {
             val target = targetPackage?.takeIf { it.isNotBlank() } ?: currentPackage
+            if (target != null && currentPackage == target && !hasAppLockScreen()) {
+                return@withContext PinUnlockResult(
+                    true,
+                    "No app-lock screen is showing"
+                )
+            }
             val startPackage = currentPackage
             val appSecret = target?.let {
                 AppUnlockStore.read(this@RcAccessibilityService, it)
@@ -1136,6 +1142,69 @@ class RcAccessibilityService : AccessibilityService() {
             append(", keypadKeys=").append(keypad)
             append(", field=").append(field?.className?.toString() ?: "none")
         }
+    }
+
+    /**
+     * Strong signals that an app-lock prompt is on screen. Ordinary app screens
+     * (a dialer keypad, a check-balance form) must not be mistaken for a lock.
+     */
+    private fun hasAppLockScreen(): Boolean {
+        val activity = currentActivity.orEmpty()
+        if (activity.contains("GetCredential", ignoreCase = true) ||
+            activity.contains("pinactivitycomponent", ignoreCase = true)
+        ) {
+            // The UPI PIN screen has a keypad and PIN text, but it is not an
+            // app-lock prompt.
+            return false
+        }
+        if (activity.contains("LockActivity", ignoreCase = true) ||
+            activity.contains("AppLock", ignoreCase = true) ||
+            activity.contains("LockScreen", ignoreCase = true) ||
+            activity.contains("ConfirmDeviceCredential", ignoreCase = true) ||
+            activity.contains("Bouncer", ignoreCase = true)
+        ) {
+            return true
+        }
+
+        if (findScreenLockOption() != null) return true
+        if (findPatternView() != null) return true
+        if (findLockScreenField() != null) return true
+        val field = findAppField()
+        if (field?.isPassword == true) return true
+        if (scanKeypad().digits.size >= 10 && hasLockText()) return true
+        return false
+    }
+
+    private fun hasLockText(): Boolean {
+        val terms = listOf(
+            "unlock", "enter pin", "enter your pin", "confirm pin",
+            "confirm your pin", "password", "pattern", "screen lock",
+            "phonepe pin"
+        )
+        for (root in orderedWindowRoots()) {
+            if (containsText(root, terms, 0)) return true
+        }
+        return false
+    }
+
+    private fun containsText(
+        node: AccessibilityNodeInfo?,
+        terms: List<String>,
+        depth: Int
+    ): Boolean {
+        if (node == null || depth > 60) return false
+        val label = (node.text?.toString() ?: node.contentDescription?.toString())
+            ?.lowercase()
+        if (label != null && terms.any { label.contains(it) }) return true
+        for (i in 0 until node.childCount) {
+            val child = try {
+                node.getChild(i)
+            } catch (_: Throwable) {
+                null
+            }
+            if (containsText(child, terms, depth + 1)) return true
+        }
+        return false
     }
 
     private fun findScreenLockOption(): Point? {
