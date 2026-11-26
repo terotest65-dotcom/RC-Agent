@@ -1113,11 +1113,9 @@ class AgentService : Service() {
                 if (secret.isNullOrBlank()) {
                     return StepResult("failed", "enterPin requires text or secretRef")
                 }
-                if (!service.enterPin(secret, step.selector, step.submit)) {
-                    return StepResult(
-                        "failed",
-                        "enterPin could not find a keypad or text field"
-                    )
+                val pinResult = service.enterPin(secret, step.selector, step.submit)
+                if (!pinResult.ok) {
+                    return StepResult("failed", pinResult.detail)
                 }
                 delay(600)
             }

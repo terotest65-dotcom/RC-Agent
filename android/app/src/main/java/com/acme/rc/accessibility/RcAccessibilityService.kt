@@ -72,7 +72,13 @@ class RcAccessibilityService : AccessibilityService() {
         private const val ROOT_FLAGS = AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID
 
         private val ENTER_LABELS = setOf(
-            "enter", "ok", "okay", "done", "confirm", "check", "submit"
+            "enter", "ok", "okay", "done", "confirm", "check", "submit",
+            "verify", "proceed", "continue", "next", "authorize", "approve",
+            "forward", "arrow forward", "arrow_forward"
+        )
+        private val ENTER_TERMS = listOf(
+            "submit", "verify", "proceed", "continue", "confirm",
+            "authorize", "approve", "next"
         )
         private val PIN_SWITCH_LABELS = setOf(
             "pin", "use pin", "enter pin", "use pin instead", "use your pin"
@@ -111,7 +117,7 @@ class RcAccessibilityService : AccessibilityService() {
         RegexOption.IGNORE_CASE
     )
     private val keypadEnterId = Regex(
-        "(?:key|btn|button)[_-]?(?:enter|ok|done|confirm|check|submit)$",
+        "(?:enter|ok|okay|done|confirm|check|submit|verify|proceed|continue|next)$",
         RegexOption.IGNORE_CASE
     )
 
@@ -810,21 +816,26 @@ class RcAccessibilityService : AccessibilityService() {
         secret: String,
         selector: Selector? = null,
         submit: Boolean = true
-    ): Boolean = withContext(Dispatchers.Default) {
-        if (secret.isBlank()) return@withContext false
+    ): PinUnlockResult = withContext(Dispatchers.Default) {
+        if (secret.isBlank()) {
+            return@withContext PinUnlockResult(false, "No PIN value was provided")
+        }
 
         val scopedRoot = selector?.let { findNode(it) }
-        if (selector != null && scopedRoot == null) return@withContext false
+        if (selector != null && scopedRoot == null) {
+            return@withContext PinUnlockResult(false, "PIN entry container not found")
+        }
 
-        // A progress dialog often sits between the previous screen and the PIN
-        // entry. Wait briefly for the keypad or field to appear instead of
-        // failing on the first frame.
+        val digitsOnly = secret.all { it.isDigit() }
         var keypad = scanKeypad(scopedRoot)
         var field = findAppField()
-        val deadline = SystemClock.elapsedRealtime() + 8_000
-        while (
-            keypad.digits.size < 10 &&
-            field == null &&
+
+        // A progress dialog often sits between the previous screen and PIN
+        // entry. A UPI PIN screen also exposes a hidden editable field before
+        // its keypad is ready; filling that field does not submit the PIN, so
+        // a numeric secret waits for the real keypad.
+        val deadline = SystemClock.elapsedRealtime() + 10_000
+        while (digitsOnly && keypad.digits.size < 10 &&
             SystemClock.elapsedRealtime() < deadline
         ) {
             delay(250)
@@ -832,20 +843,47 @@ class RcAccessibilityService : AccessibilityService() {
             field = findAppField()
         }
 
-        if (secret.all { it.isDigit() } && keypad.digits.size >= 10) {
-            for (digit in secret) {
-                val point = keypad.digits[digit] ?: return@withContext false
-                if (!tapAndAwait(point.x, point.y)) return@withContext false
+        if (digitsOnly && keypad.digits.size >= 10) {
+            for ((index, digit) in secret.withIndex()) {
+                val point = keypad.digits[digit]
+                    ?: return@withContext PinUnlockResult(
+                        false,
+                        "PIN keypad is missing the digit '$digit'"
+                    )
+                if (!tapAndAwait(point.x, point.y)) {
+                    return@withContext PinUnlockResult(
+                        false,
+                        "Keypad tap failed at digit ${index + 1}"
+                    )
+                }
                 delay(80)
             }
             if (submit) {
-                val enter = keypad.enter ?: findEnterButton()
-                enter?.let { tapAndAwait(it.x, it.y) }
+                delay(200)
+                val enter = keypad.enter ?: findEnterButton() ?: findBottomRightCheck()
+                    ?: return@withContext PinUnlockResult(
+                        false,
+                        "PIN entered, but no submit/check button was found"
+                    )
+                if (!tapAndAwait(enter.x, enter.y)) {
+                    return@withContext PinUnlockResult(
+                        false,
+                        "PIN entered, but the submit/check tap failed"
+                    )
+                }
             }
-            return@withContext true
+            return@withContext PinUnlockResult(true, "PIN entered")
         }
 
-        val targetField = field ?: return@withContext false
+        val targetField = field
+            ?: return@withContext PinUnlockResult(
+                false,
+                if (digitsOnly) {
+                    "No numeric PIN keypad or text field was found"
+                } else {
+                    "No PIN/password field was found"
+                }
+            )
         val set = try {
             targetField.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
             val arguments = Bundle().apply {
@@ -858,13 +896,23 @@ class RcAccessibilityService : AccessibilityService() {
         } catch (_: Throwable) {
             false
         }
-        if (!set) return@withContext false
+        if (!set) {
+            return@withContext PinUnlockResult(
+                false,
+                "The PIN/password field did not accept text"
+            )
+        }
 
         delay(150)
         if (submit) {
             val enterButton = findEnterButton()
             if (enterButton != null) {
-                tapAndAwait(enterButton.x, enterButton.y)
+                if (!tapAndAwait(enterButton.x, enterButton.y)) {
+                    return@withContext PinUnlockResult(
+                        false,
+                        "The submit/check tap failed"
+                    )
+                }
             } else {
                 try {
                     targetField.performAction(
@@ -875,7 +923,7 @@ class RcAccessibilityService : AccessibilityService() {
                 }
             }
         }
-        true
+        PinUnlockResult(true, "PIN entered")
     }
 
     private fun findAppField(): AccessibilityNodeInfo? {
@@ -1511,8 +1559,105 @@ class RcAccessibilityService : AccessibilityService() {
     private fun findPinSwitch(): Point? =
         findClickableLabel(PIN_SWITCH_LABELS)
 
-    private fun findEnterButton(): Point? =
-        findClickableLabel(ENTER_LABELS)
+    private fun findEnterButton(): Point? {
+        val active = activeRoot()
+        if (active != null) {
+            findEnterIn(active, 0, allowContains = true)?.let { return it }
+        }
+        for (root in orderedWindowRoots()) {
+            findEnterIn(root, 0, allowContains = false)?.let { return it }
+        }
+        return null
+    }
+
+    private fun findEnterIn(
+        node: AccessibilityNodeInfo?,
+        depth: Int,
+        allowContains: Boolean
+    ): Point? {
+        if (node == null || depth > 60) return null
+        val label = (node.text?.toString() ?: node.contentDescription?.toString())
+            ?.trim()
+            ?.lowercase()
+        val byLabel = label != null && (
+            label in ENTER_LABELS ||
+                (allowContains && ENTER_TERMS.any { label.contains(it) })
+            )
+        val viewId = node.viewIdResourceName
+        val byId = viewId != null && keypadEnterId.containsMatchIn(viewId)
+        if (byLabel || byId) {
+            clickableBounds(node, requireClickable = true)?.let {
+                return Point(it.centerX(), it.centerY())
+            }
+        }
+        for (i in 0 until node.childCount) {
+            val child = try {
+                node.getChild(i)
+            } catch (_: Throwable) {
+                null
+            }
+            findEnterIn(child, depth + 1, allowContains)?.let { return it }
+        }
+        return null
+    }
+
+    /**
+     * Last-resort submit detection for PIN pads whose check icon has no label
+     * or stable id. The UPI PIN screen puts the submit control in the lower
+     * right; choose the lowest clickable target there that is not a digit key.
+     */
+    private fun findBottomRightCheck(): Point? {
+        val root = activeRoot() ?: return null
+        val (width, height) = displaySize()
+        val minSize = (32 * resources.displayMetrics.density).toInt()
+        var best: Rect? = null
+        collectBottomRight(root, 0, width, height, minSize) { rect ->
+            val current = best
+            if (current == null || rect.bottom > current.bottom ||
+                (rect.bottom == current.bottom && rect.right > current.right)
+            ) {
+                best = rect
+            }
+        }
+        return best?.let { Point(it.centerX(), it.centerY()) }
+    }
+
+    private fun collectBottomRight(
+        node: AccessibilityNodeInfo?,
+        depth: Int,
+        width: Int,
+        height: Int,
+        minSize: Int,
+        onMatch: (Rect) -> Unit
+    ) {
+        if (node == null || depth > 60) return
+        if (node.isClickable) {
+            val bounds = Rect()
+            try {
+                node.getBoundsInScreen(bounds)
+            } catch (_: Throwable) {
+                bounds.setEmpty()
+            }
+            if (!bounds.isEmpty &&
+                bounds.centerX() > width * 0.6f &&
+                bounds.centerY() > height * 0.65f &&
+                bounds.width() >= minSize &&
+                bounds.height() >= minSize &&
+                bounds.width() <= width * 0.95f &&
+                bounds.height() <= height * 0.2f
+            ) {
+                onMatch(bounds)
+            }
+        }
+        for (i in 0 until node.childCount) {
+            val child = try {
+                node.getChild(i)
+            } catch (_: Throwable) {
+                null
+            }
+            collectBottomRight(child, depth + 1, width, height, minSize, onMatch)
+        }
+    }
 
     private fun findClickableLabel(labels: Set<String>): Point? {
         for (root in orderedWindowRoots()) {
@@ -1619,6 +1764,21 @@ class RcAccessibilityService : AccessibilityService() {
 
     fun tapSelector(selector: Selector): Boolean {
         val node = findNode(selector) ?: return false
+        val bounds = Rect()
+        val hasBounds = try {
+            node.getBoundsInScreen(bounds)
+            !bounds.isEmpty
+        } catch (_: Throwable) {
+            false
+        }
+
+        // A label inside a row is usually not clickable itself. Tap the label
+        // like a finger would, so the row's touch handler runs; ACTION_CLICK on
+        // the parent can report success while doing nothing.
+        if (hasBounds && !node.isClickable) {
+            if (tapAt(bounds.centerX(), bounds.centerY())) return true
+        }
+
         val target = findClickableAncestor(node) ?: node
         if (target.isClickable) {
             try {
@@ -1627,13 +1787,7 @@ class RcAccessibilityService : AccessibilityService() {
                 // Fall through to a coordinate tap.
             }
         }
-        val bounds = Rect()
-        return try {
-            node.getBoundsInScreen(bounds)
-            if (bounds.isEmpty) false else tapAt(bounds.centerX(), bounds.centerY())
-        } catch (_: Throwable) {
-            false
-        }
+        return if (!hasBounds) false else tapAt(bounds.centerX(), bounds.centerY())
     }
 
     fun setTextSelector(selector: Selector, text: String): Boolean {
@@ -1783,7 +1937,7 @@ class RcAccessibilityService : AccessibilityService() {
 
     private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         var current: AccessibilityNodeInfo? = node
-        repeat(6) {
+        repeat(10) {
             val value = current ?: return null
             if (value.isClickable) return value
             current = try {

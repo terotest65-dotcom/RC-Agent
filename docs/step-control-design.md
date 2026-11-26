@@ -475,6 +475,13 @@ field with `ACTION_SET_TEXT` when the lock screen is a text field. The optional
 presses the keypad's Enter/check key or the IME action. The secret is never
 included in the run report.
 
+For a numeric secret, `enterPin` prefers the keypad over a hidden editable field
+and waits up to 10 seconds for the keypad to appear. With `submit: true` it looks
+for a button labeled submit/verify/continue/check, then a view id ending in one
+of those words, then a bottom-right check target on the PIN screen. If none is
+found, the step fails with `PIN entered, but no submit/check button was found`
+instead of silently leaving the PIN unsubmitted.
+
 App-lock prompts are handled inside the macro before navigation:
 
 ```json

@@ -113,7 +113,9 @@ right-side activity drawer:
   raw code). Requires the phone/SMS permissions on the agent.
 - **Macros** — JSON macro editor, parameters, save/delete, run. App-level PIN
   screens use an `enterPin` step with a `secretRef`; it taps a labeled keypad
-  or fills a text field without exposing the PIN in the run report. Add
+  or fills a text field without exposing the PIN in the run report. Use
+  `submit: false` for UPI screens that advance after the last digit, and
+  `submit: true` when the screen has a separate submit/check button. Add
   `appUnlock` after `launch` to handle an app-lock prompt; it is a no-op when
   the app is already unlocked. A selector's `index` picks the Nth match
   (1-based) and accepts a `{{param}}`, so a macro can choose the first or second
