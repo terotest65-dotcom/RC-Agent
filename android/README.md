@@ -144,9 +144,12 @@ device charging, and disable battery optimization.
     panel's **Open enrollment** button (to replace a wrong credential).
     The screen detects the lock type and shows the matching input: a numeric
     PIN field, a drag-to-draw 3×3 pattern pad, or a password field. The operator
-    can override the detected type. The credential is stored with the same
-    Keystore key and never sent through the relay. Clearing the credential
-    re-arms the prompt and the automatic open.
+    can override the detected type. Detection uses the last keyguard bouncer the
+    accessibility service saw, so on a fresh setup it can be unknown until the
+    device is locked and unlocked once; the screen re-checks on resume and has a
+    **Detect type** button. The credential is stored with the same Keystore key
+    and never sent through the relay. Clearing the credential re-arms the prompt
+    and the automatic open.
   - Without a stored credential, a PIN/pattern/password shows the normal lock
     screen; the person must enter it. Device Owner does not bypass a set
     credential: `setKeyguardDisabled` has no effect while one is configured.

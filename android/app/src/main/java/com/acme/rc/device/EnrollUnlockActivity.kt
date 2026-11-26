@@ -38,6 +38,8 @@ class EnrollUnlockActivity : Activity() {
     private lateinit var error: TextView
 
     private var selectedType = LockType.PASSWORD
+    private var userSelectedType = false
+    private var applyingType = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,28 +87,65 @@ class EnrollUnlockActivity : Activity() {
             }
         }
 
-        val detected = LockTypeStore.get(this)
+        val detected = LockTypeDetector.detect(this)
         val initial = if (detected == LockType.UNKNOWN) LockType.PASSWORD else detected
-        typeGroup.check(
-            when (initial) {
-                LockType.PIN -> R.id.enroll_type_pin
-                LockType.PATTERN -> R.id.enroll_type_pattern
-                else -> R.id.enroll_type_password
-            }
-        )
-        detectedHint.text = if (detected == LockType.UNKNOWN) {
-            getString(R.string.enroll_unknown)
-        } else {
-            getString(R.string.enroll_detected, label(detected))
+        selectType(initial)
+        updateDetectedHint(detected)
+        findViewById<Button>(R.id.enroll_detect_type).setOnClickListener {
+            detectNow()
         }
-        applyType(initial)
 
         typeGroup.setOnCheckedChangeListener { _, checkedId ->
+            if (applyingType) return@setOnCheckedChangeListener
+            userSelectedType = true
             when (checkedId) {
                 R.id.enroll_type_pin -> applyType(LockType.PIN)
                 R.id.enroll_type_pattern -> applyType(LockType.PATTERN)
                 R.id.enroll_type_password -> applyType(LockType.PASSWORD)
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (userSelectedType) return
+        val detected = LockTypeDetector.detect(this)
+        updateDetectedHint(detected)
+        if (detected != LockType.UNKNOWN && detected != selectedType) {
+            selectType(detected)
+        }
+    }
+
+    private fun selectType(type: LockType) {
+        selectedType = type
+        applyingType = true
+        typeGroup.check(
+            when (type) {
+                LockType.PIN -> R.id.enroll_type_pin
+                LockType.PATTERN -> R.id.enroll_type_pattern
+                else -> R.id.enroll_type_password
+            }
+        )
+        applyingType = false
+        applyType(type)
+    }
+
+    private fun updateDetectedHint(type: LockType) {
+        detectedHint.text = if (type == LockType.UNKNOWN) {
+            getString(R.string.enroll_unknown)
+        } else {
+            getString(R.string.enroll_detected, label(type))
+        }
+    }
+
+    private fun detectNow() {
+        userSelectedType = false
+        val detected = LockTypeDetector.detect(this)
+        updateDetectedHint(detected)
+        if (detected != LockType.UNKNOWN) {
+            if (detected != selectedType) selectType(detected)
+        } else {
+            Toast.makeText(this, R.string.enroll_detect_hint, Toast.LENGTH_LONG).show()
         }
     }
 

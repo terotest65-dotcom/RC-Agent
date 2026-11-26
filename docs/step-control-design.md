@@ -156,10 +156,11 @@ automatic open.
 
 The accessibility service classifies the visible bouncer as a PIN keypad, a
 pattern view, or a password field and caches that type. The enrollment screen
-shows the matching input: a numeric PIN field, a drag-to-draw 3×3 pattern pad, or a password
-field. The operator can override the detected type; if classification never
-happened, the screen defaults to the password field and offers the three
-choices.
+shows the matching input: a numeric PIN field, a drag-to-draw 3×3 pattern pad,
+or a password field. The operator can override the detected type. On a fresh
+setup the cache can be empty until the device is locked and unlocked once; the
+screen re-checks on resume and has a **Detect type** action. If classification
+never happened, it defaults to the password field and offers the three choices.
 
 **App-level locks.** The `appUnlock` command targets the foreground app and is
 the one-click counterpart to the `enterPin` macro step. App locks come in two

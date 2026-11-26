@@ -97,9 +97,10 @@ right-side activity drawer:
   app's status sheet, and the panel's **Open enrollment** button (useful when
   the wrong credential was saved). The screen detects the lock type and shows a
   numeric PIN field, a drag-to-draw 3×3 pattern pad, or a password field (with a
-  manual override). The credential is stored with the Keystore key and never
-  travels through the relay. The same credential can also be entered from the
-  panel.
+  manual override). On a fresh setup the type can be unknown until the device
+  is locked and unlocked once; the screen re-checks and has a **Detect type**
+  button. The credential is stored with the Keystore key and never travels
+  through the relay. The same credential can also be entered from the panel.
 - **App unlock** — targets the foreground app. It taps the device's
   “Use password/PIN/pattern/screen lock” option when an app lock offers
   biometrics, then enters a per-app credential if one is stored, otherwise the

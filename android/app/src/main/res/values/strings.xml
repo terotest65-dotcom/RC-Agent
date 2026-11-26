@@ -11,7 +11,9 @@
     <string name="enroll_type_pattern">Pattern</string>
     <string name="enroll_type_password">Password</string>
     <string name="enroll_detected">Detected from the lock screen: %1$s</string>
-    <string name="enroll_unknown">Couldn\'t detect the lock type. Choose PIN, Pattern, or Password.</string>
+    <string name="enroll_unknown">Couldn\'t detect the lock type. Lock and unlock the device once, then tap Detect type, or choose below.</string>
+    <string name="enroll_detect_type">Detect type</string>
+    <string name="enroll_detect_hint">Lock and unlock the device once, then tap Detect type.</string>
     <string name="enroll_pin_hint">4–16 digit PIN</string>
     <string name="enroll_password_hint">Password</string>
     <string name="enroll_pattern_empty">Draw your pattern.</string>
