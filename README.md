@@ -84,15 +84,20 @@ right-side activity drawer:
 - **Control** — apps, snapshot with hotspots, tap/type/scroll, back/home/
   recents, a composer that types into the focused field on the device
   (`Insert` = set text, `Insert + Enter` = set text and press the IME enter key),
-  plus **Wake** and **Unlock** actions. Wake works while the screen is off.
-  Unlock dismisses a swipe/no-security keyguard; a PIN/pattern/password still
-  requires the person to enter it, unless the device is provisioned with no
-  secure lock and Device Owner.
+  plus **Wake** and **Unlock** actions and a **Device unlock** panel. Wake
+  works while the screen is off. Unlock dismisses a swipe/no-security keyguard,
+  and for a secure lock it can enter a PIN or password stored on the device —
+  PIN keypads are tapped with accessibility gestures, password fields are
+  filled with set-text. Device Owner only disables a keyguard that has no
+  credential set. Without a stored credential, a secure lock still has to be
+  entered on the device.
 - **Phone** — SIM details and numbers, inbox messages with a compact **Money**
   band for the latest debit/credit/balance SMS, direct SMS sending, and
   carrier-USSD call forwarding (all calls, no answer, busy, unreachable, or a
   raw code). Requires the phone/SMS permissions on the agent.
-- **Macros** — JSON macro editor, parameters, save/delete, run.
+- **Macros** — JSON macro editor, parameters, save/delete, run. App-level PIN
+  screens use an `enterPin` step with a `secretRef`; it taps a labeled keypad
+  or fills a text field without exposing the PIN in the run report.
 - **Recorder** — passive per-app recording: click **Record** on an app, then
   open that app on the device yourself. Leaving the app or pressing
   **Stop & save** saves the macro. Live text/tap/scroll feed, text-only

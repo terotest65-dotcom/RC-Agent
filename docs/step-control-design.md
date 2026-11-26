@@ -112,8 +112,32 @@ This is the #1 operational failure mode for unattended runs. Handle it explicitl
 | Situation | What works |
 |---|---|
 | No secure lock (swipe/none) | An activity with `requestDismissKeyguard()`; `FLAG_SHOW_WHEN_LOCKED` |
-| Secure lock (PIN/pattern/biometric) | **Cannot** be automated by a normal app |
-| Device Owner | `DevicePolicyManager.setKeyguardDisabled(admin, true)` removes the keyguard |
+| Secure PIN with a stored credential | `AccessibilityService.dispatchGesture()` taps the keypad (OEM-dependent) |
+| Secure password with a stored credential | `ACTION_SET_TEXT` on the bouncer's focused `EditText`, then `ACTION_IME_ENTER` |
+| Secure PIN/password without a stored credential | **Cannot** be automated by a normal app |
+| Pattern / biometric | **Cannot** be automated by a normal app |
+| Device Owner | `setKeyguardDisabled(admin, true)` only when no PIN/pattern/password is set |
+
+**Credential entry is a consented accessibility capability, not a sandbox
+bypass.** The device user must enable the accessibility service, and the PIN or
+password is provisioned from the panel and stored encrypted with an Android
+Keystore key. It is never returned to the browser, written to macros/secrets,
+or logged. `MediaProjection` cannot be used to watch the lock screen
+(per-session consent that cannot be approved while locked, and Android 15+
+stops capture on lock), so the agent uses the accessibility tree instead.
+
+The two paths need different mechanics:
+
+- **PIN** — locate the digit keys by accessibility label and tap them with
+  `dispatchGesture`. The numeric keypad has no usable `ACTION_SET_TEXT` target.
+- **Password** — the bouncer exposes a focused `EditText`; `ACTION_SET_TEXT`
+  fills the whole credential (letters, digits, symbols) in one call, then
+  `ACTION_IME_ENTER` submits it. This is more reliable than driving the IME and
+  was verified on API 36.
+
+Android escalates failed unlock attempts; the agent makes **one** attempt per
+unlock command and never brute-forces. Blind keypad tapping is opt-in and only
+applies to numeric credentials.
 
 **Preflight must check:** `KeyguardManager.isKeyguardLocked`, `isDeviceSecure`, screen on, battery/charging, accessibility enabled, notification access (if OTP), target app installed and version. If a check fails, return `preflight_failed` with reasons and do not start the run.
 
@@ -381,6 +405,7 @@ class OtpNotificationListener : NotificationListenerService() {
 | `tapIfExists` | Optional click (ads, permission dialogs, "Skip") |
 | `longPress` | Long click |
 | `setText` | Focus + set text; `secret: true` redacts |
+| `enterPin` | Enter a PIN/password into a labeled app keypad or text field; use `secretRef` |
 | `scroll` / `scrollUntil` | Scroll container / scroll until selector visible |
 | `swipe` | Raw gesture for sliders/carousels |
 | `key` | back / home / recents / enter |
@@ -389,6 +414,26 @@ class OtpNotificationListener : NotificationListenerService() {
 | `screenshot` | Explicit checkpoint |
 | `assert` | Post-condition |
 | `api` | Call an allowlisted official API (future third-party) |
+
+**App-level locks.** App PIN/password screens (banking apps, third-party app
+lockers) are ordinary app windows, not the keyguard, so the system lock rules do
+not apply. Use `enterPin` with a `secretRef` from the Secrets tab:
+
+```json
+{ "op": "enterPin", "secretRef": "bank-pin", "submit": true,
+  "selector": { "viewId": "com.acme.bank:id/pin_pad" },
+  "expect": { "text": "Accounts" } }
+```
+
+`enterPin` taps a labeled 3-column digit keypad, or fills the focused editable
+field with `ACTION_SET_TEXT` when the lock screen is a text field. The optional
+`selector` scopes the keypad search to a container, and `submit` (default true)
+presses the keypad's Enter/check key or the IME action. The secret is never
+included in the run report.
+
+`FLAG_SECURE` apps still block screenshots but do not block accessibility input;
+custom canvas keypads that expose no digit nodes still need raw `tap` steps.
+Biometric-only app locks cannot be automated.
 | `confirm` | Human approval gate (optional) |
 
 Every mutating step should have an `expect`. If it has none, the engine marks it `unverified` rather than assuming success.

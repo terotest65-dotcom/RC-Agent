@@ -3,20 +3,30 @@ package com.acme.rc.accessibility
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
+import android.app.KeyguardManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Path
+import android.graphics.Point
+import android.graphics.PointF
 import android.graphics.Rect
 import android.graphics.RectF
 import android.hardware.display.DisplayManager
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import android.view.Display
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.core.content.ContextCompat
 import com.acme.rc.agent.AgentService
+import com.acme.rc.device.DevicePin
+import com.acme.rc.device.KeypadLayout
+import com.acme.rc.device.PinKeypadStore
+import com.acme.rc.device.PinUnlockResult
 import com.acme.rc.model.Element
 import com.acme.rc.model.ProbeResult
 import com.acme.rc.model.Selector
@@ -25,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
@@ -47,10 +58,26 @@ class RcAccessibilityService : AccessibilityService() {
         private const val MIN_DP = 16
         private const val ROW_DP = 48
         private const val MAX_SCREENSHOT_EDGE = 1280
+
+        private val ENTER_LABELS = setOf(
+            "enter", "ok", "okay", "done", "confirm", "check", "submit"
+        )
+        private val PIN_SWITCH_LABELS = setOf(
+            "pin", "use pin", "enter pin", "use pin instead", "use your pin"
+        )
     }
 
     private val lastContentChange = AtomicLong(0)
     private var lastScreenshotAt = 0L
+
+    private val keypadDigitId = Regex(
+        "(?:key|digit|num)[_-]?([0-9])$",
+        RegexOption.IGNORE_CASE
+    )
+    private val keypadEnterId = Regex(
+        "(?:key|btn|button)[_-]?(?:enter|ok|done|confirm|check|submit)$",
+        RegexOption.IGNORE_CASE
+    )
 
     @Volatile
     var currentPackage: String? = null
@@ -326,6 +353,610 @@ class RcAccessibilityService : AccessibilityService() {
             dispatchGesture(gesture, null, null)
         } catch (_: Throwable) {
             false
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Keyguard PIN entry
+    // ---------------------------------------------------------------------
+
+    private data class KeypadScan(
+        val digits: Map<Char, Point>,
+        val enter: Point?
+    )
+
+    /**
+     * Enters a stored PIN or password on the lock screen.
+     *
+     * The keyguard is a system window that a normal app cannot read or write
+     * credentials into. An enabled accessibility service can, however, dispatch
+     * real touch gestures at screen coordinates and set text on the bouncer's
+     * credential field.
+     *
+     * A numeric credential on a PIN keypad is tapped key by key. On a password
+     * bouncer the focused EditText is filled with ACTION_SET_TEXT, which also
+     * handles letters and symbols without driving the keyboard.
+     *
+     * One attempt per command: Android escalates failed unlock attempts, and a
+     * blind retry can burn another one.
+     */
+    suspend fun unlockWithCredential(
+        secret: String,
+        allowCachedLayout: Boolean
+    ): PinUnlockResult = withContext(Dispatchers.Default) {
+        if (!DevicePin.isValid(secret)) {
+            return@withContext PinUnlockResult(false, "Stored credential is invalid")
+        }
+
+        val keyguard = getSystemService(KeyguardManager::class.java)
+            ?: return@withContext PinUnlockResult(false, "Keyguard service is unavailable")
+        if (!keyguard.isKeyguardLocked) {
+            return@withContext PinUnlockResult(true, "Device is already unlocked")
+        }
+        if (!keyguard.isDeviceSecure) {
+            return@withContext PinUnlockResult(
+                false,
+                "Device has no secure lock; use the normal unlock action"
+            )
+        }
+
+        waitForInteractive()
+
+        var keypad = scanKeypad()
+        if (keypad.digits.size < 10) {
+            // Most lock screens need a swipe up before the credential bouncer
+            // is shown, especially when biometrics are enrolled.
+            revealKeypad()
+            keypad = scanKeypad()
+        }
+        if (keypad.digits.size < 10) {
+            findPinSwitch()?.let { point ->
+                if (tapAndAwait(point.x, point.y)) {
+                    delay(400)
+                    keypad = scanKeypad()
+                }
+            }
+        }
+
+        val (width, height) = displaySize()
+        val rotation = currentRotation()
+
+        // No numeric keypad: this is a password/hidden-field bouncer. The
+        // keyguard exposes a focused EditText, and ACTION_SET_TEXT handles the
+        // whole credential at once.
+        if (keypad.digits.size < 10) {
+            findLockScreenField()?.let { field ->
+                enterPassword(field, secret)?.let { return@withContext it }
+            }
+        }
+
+        var digits = keypad.digits
+        var enter = keypad.enter
+        var usedCache = false
+
+        if (digits.size >= 10) {
+            PinKeypadStore.save(
+                this@RcAccessibilityService,
+                width,
+                height,
+                rotation,
+                KeypadLayout(
+                    digits = digits.mapValues { (_, point) ->
+                        PointF(point.x.toFloat() / width, point.y.toFloat() / height)
+                    },
+                    enter = enter?.let {
+                        PointF(it.x.toFloat() / width, it.y.toFloat() / height)
+                    }
+                )
+            )
+        } else if (allowCachedLayout) {
+            val cached = PinKeypadStore.load(
+                this@RcAccessibilityService,
+                width,
+                height,
+                rotation
+            )
+            if (cached != null) {
+                digits = cached.digits.mapValues { (_, point) ->
+                    Point((point.x * width).toInt(), (point.y * height).toInt())
+                }
+                enter = cached.enter?.let {
+                    Point((it.x * width).toInt(), (it.y * height).toInt())
+                }
+                usedCache = true
+            }
+        }
+
+        if (digits.size < 10) {
+            return@withContext PinUnlockResult(
+                false,
+                "Lock-screen field or keypad not exposed to accessibility " +
+                    "(${keypad.digits.size}/10 keys found). Unlock on the device."
+            )
+        }
+
+        if (!secret.all { it.isDigit() }) {
+            return@withContext PinUnlockResult(
+                false,
+                "The lock screen is a PIN keypad, but the stored credential is not numeric."
+            )
+        }
+
+        if (!keyguard.isKeyguardLocked) {
+            return@withContext PinUnlockResult(true, "Device was unlocked on the device")
+        }
+
+        for ((index, digit) in secret.withIndex()) {
+            if (!keyguard.isKeyguardLocked) {
+                return@withContext PinUnlockResult(true, "Device was unlocked on the device")
+            }
+            val point = digits[digit]
+            if (point == null) {
+                if (usedCache) PinKeypadStore.clear(this@RcAccessibilityService)
+                return@withContext PinUnlockResult(false, "Keypad is missing a required digit")
+            }
+            if (!tapAndAwait(point.x, point.y)) {
+                if (usedCache) PinKeypadStore.clear(this@RcAccessibilityService)
+                return@withContext PinUnlockResult(
+                    false,
+                    "Tap gesture was rejected at digit ${index + 1}"
+                )
+            }
+            delay(110)
+        }
+
+        // AOSP auto-submits at the correct length. OEM keypads may need Enter.
+        if (awaitUnlocked(1800)) {
+            return@withContext PinUnlockResult(
+                true,
+                if (usedCache) "Unlocked with device PIN (cached keypad)"
+                else "Unlocked with device PIN"
+            )
+        }
+        if (!keyguard.isKeyguardLocked) {
+            return@withContext PinUnlockResult(true, "Unlocked with device PIN")
+        }
+
+        val enterPoint = enter ?: findEnterButton()
+        if (enterPoint != null &&
+            tapAndAwait(enterPoint.x, enterPoint.y) &&
+            awaitUnlocked(2500)
+        ) {
+            return@withContext PinUnlockResult(
+                true,
+                if (usedCache) "Unlocked with device PIN (cached keypad)"
+                else "Unlocked with device PIN"
+            )
+        }
+
+        if (usedCache) PinKeypadStore.clear(this@RcAccessibilityService)
+        PinUnlockResult(
+            false,
+            "PIN entry did not unlock the device. Android limits repeated attempts."
+        )
+    }
+
+    private suspend fun waitForInteractive(timeoutMs: Long = 1500) {
+        val power = getSystemService(PowerManager::class.java)
+        val started = SystemClock.elapsedRealtime()
+        while (power?.isInteractive != true &&
+            SystemClock.elapsedRealtime() - started < timeoutMs
+        ) {
+            delay(100)
+        }
+    }
+
+    private suspend fun revealKeypad() {
+        val (width, height) = displaySize()
+        swipe(
+            width / 2,
+            (height * 0.82f).toInt(),
+            width / 2,
+            (height * 0.28f).toInt(),
+            260
+        )
+        delay(500)
+    }
+
+    private suspend fun awaitUnlocked(timeoutMs: Long): Boolean {
+        val keyguard = getSystemService(KeyguardManager::class.java) ?: return false
+        val started = SystemClock.elapsedRealtime()
+        while (SystemClock.elapsedRealtime() - started < timeoutMs) {
+            if (!keyguard.isKeyguardLocked) return true
+            delay(100)
+        }
+        return !keyguard.isKeyguardLocked
+    }
+
+    /**
+     * The password bouncer's focused EditText, or a text field in the keyguard
+     * window. Only system windows are considered so an app behind the keyguard
+     * cannot be mistaken for the credential prompt.
+     */
+    private fun findLockScreenField(): AccessibilityNodeInfo? {
+        val roots = try {
+            windows
+                .filter { it.type == AccessibilityWindowInfo.TYPE_SYSTEM }
+                .sortedByDescending { it.isFocused }
+                .mapNotNull { window ->
+                    try {
+                        window.root
+                    } catch (_: Throwable) {
+                        null
+                    }
+                }
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        val candidates = roots.ifEmpty { listOfNotNull(activeRoot()) }
+        for (root in candidates) {
+            val focused = try {
+                root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            } catch (_: Throwable) {
+                null
+            }
+            val target = focused?.let { editableField(it) } ?: findFirstEditable(root)
+            if (target != null) return target
+        }
+        return null
+    }
+
+    private fun editableField(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isEditable) return node
+        findEditableAncestor(node)?.let { return it }
+        val supportsSetText = node.actionList.any {
+            it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SET_TEXT.id
+        }
+        return if (supportsSetText) node else null
+    }
+
+    /**
+     * Fills a password field in one shot. Returns null when the field rejected
+     * the text (so the caller can still try a cached keypad); otherwise it
+     * returns the final result, including a failed unlock.
+     */
+    private suspend fun enterPassword(
+        field: AccessibilityNodeInfo,
+        secret: String
+    ): PinUnlockResult? {
+        val set = try {
+            field.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            val arguments = Bundle().apply {
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    secret
+                )
+            }
+            field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        } catch (_: Throwable) {
+            false
+        }
+        if (!set) return null
+
+        delay(150)
+        try {
+            val target = findLockScreenField() ?: field
+            target.performAction(
+                AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id
+            )
+        } catch (_: Throwable) {
+            // The check/enter button below is the fallback.
+        }
+        if (awaitUnlocked(2500)) {
+            return PinUnlockResult(true, "Unlocked with device password")
+        }
+
+        findEnterButton()?.let { point ->
+            if (tapAndAwait(point.x, point.y) && awaitUnlocked(1500)) {
+                return PinUnlockResult(true, "Unlocked with device password")
+            }
+        }
+
+        return PinUnlockResult(
+            false,
+            "The stored credential did not unlock the device. Android limits repeated attempts."
+        )
+    }
+
+    /**
+     * Enters an app-level PIN or password into the foreground app.
+     *
+     * App lock screens are ordinary app windows (or an app-locker overlay), not
+     * the keyguard, so a labeled digit keypad and a focused text field are both
+     * usable. The secret comes from the macro's `secretRef`; it is not logged
+     * or included in the run report.
+     */
+    suspend fun enterPin(
+        secret: String,
+        selector: Selector? = null,
+        submit: Boolean = true
+    ): Boolean = withContext(Dispatchers.Default) {
+        if (secret.isBlank()) return@withContext false
+
+        val scopedRoot = selector?.let { findNode(it) }
+        if (selector != null && scopedRoot == null) return@withContext false
+
+        val keypad = scanKeypad(scopedRoot)
+        if (secret.all { it.isDigit() } && keypad.digits.size >= 10) {
+            for (digit in secret) {
+                val point = keypad.digits[digit] ?: return@withContext false
+                if (!tapAndAwait(point.x, point.y)) return@withContext false
+                delay(80)
+            }
+            if (submit) {
+                val enter = keypad.enter ?: findEnterButton()
+                enter?.let { tapAndAwait(it.x, it.y) }
+            }
+            return@withContext true
+        }
+
+        val field = findAppField() ?: return@withContext false
+        val set = try {
+            field.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            val arguments = Bundle().apply {
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    secret
+                )
+            }
+            field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        } catch (_: Throwable) {
+            false
+        }
+        if (!set) return@withContext false
+
+        delay(150)
+        if (submit) {
+            val enterButton = findEnterButton()
+            if (enterButton != null) {
+                tapAndAwait(enterButton.x, enterButton.y)
+            } else {
+                try {
+                    field.performAction(
+                        AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id
+                    )
+                } catch (_: Throwable) {
+                    // The app did not expose an IME action.
+                }
+            }
+        }
+        true
+    }
+
+    private fun findAppField(): AccessibilityNodeInfo? {
+        val root = activeRoot() ?: return null
+        val focused = try {
+            root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        } catch (_: Throwable) {
+            null
+        }
+        return focused?.let { editableField(it) } ?: findFirstEditable(root)
+    }
+
+    private suspend fun tapAndAwait(x: Int, y: Int): Boolean {
+        val completed = withTimeoutOrNull(1500) {
+            suspendCancellableCoroutine { cont ->
+                val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+                val stroke = GestureDescription.StrokeDescription(path, 0, 60)
+                val gesture = GestureDescription.Builder().addStroke(stroke).build()
+                val callback = object : AccessibilityService.GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription?) {
+                        if (cont.isActive) cont.resume(true)
+                    }
+
+                    override fun onCancelled(gestureDescription: GestureDescription?) {
+                        if (cont.isActive) cont.resume(false)
+                    }
+                }
+                val dispatched = try {
+                    dispatchGesture(gesture, callback, null)
+                } catch (_: Throwable) {
+                    false
+                }
+                if (!dispatched && cont.isActive) cont.resume(false)
+            }
+        }
+        return completed == true
+    }
+
+    private fun scanKeypad(root: AccessibilityNodeInfo? = null): KeypadScan {
+        val digits = linkedMapOf<Char, Point>()
+        val enter = mutableListOf<Point>()
+        val roots = if (root != null) listOf(root) else orderedWindowRoots()
+
+        for (candidate in roots) {
+            collectKeypad(candidate, digits, enter)
+            if (digits.size >= 10) break
+        }
+        // A password bouncer's QWERTY row (or a numeric IME) can expose ten
+        // "digit" nodes. Only accept a real 3-column keypad so a wrong layout
+        // does not burn a failed unlock attempt.
+        val validKeypad = looksLikeKeypad(digits)
+        return KeypadScan(
+            digits = if (validKeypad) digits else emptyMap(),
+            enter = if (validKeypad) enter.firstOrNull() else null
+        )
+    }
+
+    private fun orderedWindowRoots(): List<AccessibilityNodeInfo> {
+        val roots = mutableListOf<AccessibilityNodeInfo>()
+        val ordered = try {
+            windows
+                .filter { it.type != AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+                .sortedWith(
+                    compareByDescending<AccessibilityWindowInfo> {
+                        it.type == AccessibilityWindowInfo.TYPE_SYSTEM
+                    }.thenByDescending { it.isFocused }
+                )
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        for (window in ordered) {
+            val root = try {
+                window.root
+            } catch (_: Throwable) {
+                null
+            } ?: continue
+            roots += root
+        }
+        activeRoot()?.let { roots += it }
+        return roots
+    }
+
+    private fun looksLikeKeypad(digits: Map<Char, Point>): Boolean {
+        if (digits.size < 10) return false
+        val (width, height) = displaySize()
+        val rowTolerance = (height / 40).coerceAtLeast(24)
+        val columnTolerance = (width / 40).coerceAtLeast(24)
+        val rows = clusterCount(digits.values.map { it.y }, rowTolerance)
+        val columns = clusterCount(digits.values.map { it.x }, columnTolerance)
+        return rows >= 3 && columns in 3..4
+    }
+
+    private fun clusterCount(values: List<Int>, tolerance: Int): Int {
+        if (values.isEmpty()) return 0
+        val sorted = values.sorted()
+        var count = 1
+        var last = sorted.first()
+        for (value in sorted.drop(1)) {
+            if (value - last > tolerance) count++
+            last = value
+        }
+        return count
+    }
+
+    private fun collectKeypad(
+        node: AccessibilityNodeInfo?,
+        digits: MutableMap<Char, Point>,
+        enter: MutableList<Point>,
+        depth: Int = 0
+    ) {
+        if (node == null || depth > 60) return
+        val label = (node.text?.toString() ?: node.contentDescription?.toString())
+            ?.trim()
+            ?.lowercase()
+        val digit = digitFromLabel(label) ?: digitFromViewId(node.viewIdResourceName)
+
+        if (digit != null) {
+            if (!digits.containsKey(digit)) {
+                clickableBounds(node)?.let {
+                    digits[digit] = Point(it.centerX(), it.centerY())
+                }
+            }
+        } else if (enter.size < 2 && isEnterNode(node, label)) {
+            clickableBounds(node, requireClickable = true)?.let {
+                enter += Point(it.centerX(), it.centerY())
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = try {
+                node.getChild(i)
+            } catch (_: Throwable) {
+                null
+            }
+            collectKeypad(child, digits, enter, depth + 1)
+        }
+    }
+
+    private fun digitFromLabel(label: String?): Char? =
+        label?.takeIf { it.length == 1 && it[0] in '0'..'9' }?.get(0)
+
+    private fun digitFromViewId(viewId: String?): Char? {
+        val match = viewId?.let { keypadDigitId.find(it) } ?: return null
+        return match.groupValues.getOrNull(1)?.firstOrNull()
+    }
+
+    private fun isEnterNode(node: AccessibilityNodeInfo, label: String?): Boolean {
+        if (label != null && label in ENTER_LABELS) return true
+        val viewId = node.viewIdResourceName ?: return false
+        return keypadEnterId.containsMatchIn(viewId)
+    }
+
+    private fun findPinSwitch(): Point? =
+        findClickableLabel(PIN_SWITCH_LABELS)
+
+    private fun findEnterButton(): Point? =
+        findClickableLabel(ENTER_LABELS)
+
+    private fun findClickableLabel(labels: Set<String>): Point? {
+        for (root in orderedWindowRoots()) {
+            findClickableLabelIn(root, labels, 0)?.let { return it }
+        }
+        return null
+    }
+
+    private fun findClickableLabelIn(
+        node: AccessibilityNodeInfo?,
+        labels: Set<String>,
+        depth: Int
+    ): Point? {
+        if (node == null || depth > 60) return null
+        val label = (node.text?.toString() ?: node.contentDescription?.toString())
+            ?.trim()
+            ?.lowercase()
+        if (label != null && label in labels) {
+            clickableBounds(node, requireClickable = true)?.let {
+                return Point(it.centerX(), it.centerY())
+            }
+        }
+        for (i in 0 until node.childCount) {
+            val child = try {
+                node.getChild(i)
+            } catch (_: Throwable) {
+                null
+            }
+            findClickableLabelIn(child, labels, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    private fun clickableBounds(
+        node: AccessibilityNodeInfo,
+        requireClickable: Boolean = false
+    ): Rect? {
+        var current: AccessibilityNodeInfo? = node
+        repeat(5) {
+            val value = current ?: return null
+            if (value.isClickable) {
+                val rect = Rect()
+                try {
+                    value.getBoundsInScreen(rect)
+                    if (!rect.isEmpty) return rect
+                } catch (_: Throwable) {
+                    // Keep walking up.
+                }
+            }
+            current = try {
+                value.parent
+            } catch (_: Throwable) {
+                null
+            }
+        }
+        if (requireClickable) return null
+        val rect = Rect()
+        return try {
+            node.getBoundsInScreen(rect)
+            if (rect.isEmpty) null else rect
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun displaySize(): Pair<Int, Int> {
+        return try {
+            val bounds = getSystemService(WindowManager::class.java)
+                ?.currentWindowMetrics
+                ?.bounds
+            if (bounds != null && !bounds.isEmpty) {
+                bounds.width() to bounds.height()
+            } else {
+                resources.displayMetrics.widthPixels to
+                    resources.displayMetrics.heightPixels
+            }
+        } catch (_: Throwable) {
+            resources.displayMetrics.widthPixels to
+                resources.displayMetrics.heightPixels
         }
     }
 

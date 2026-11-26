@@ -75,6 +75,8 @@ data class DeviceState(
     val charging: Boolean,
     val deviceOwner: Boolean,
     val stayAwake: Boolean,
+    val devicePin: Boolean,
+    val pinFallback: Boolean,
     val androidSdk: Int,
     val model: String
 )

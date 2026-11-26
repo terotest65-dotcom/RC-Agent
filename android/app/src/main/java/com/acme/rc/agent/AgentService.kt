@@ -25,8 +25,10 @@ import androidx.core.app.ServiceCompat
 import com.acme.rc.MainActivity
 import com.acme.rc.accessibility.RcAccessibilityService
 import com.acme.rc.admin.RcDeviceAdminReceiver
+import com.acme.rc.device.DevicePin
 import com.acme.rc.device.DevicePower
 import com.acme.rc.device.DeviceStateReader
+import com.acme.rc.device.PinKeypadStore
 import com.acme.rc.device.UnlockActivity
 import com.acme.rc.device.UnlockBridge
 import com.acme.rc.inventory.AppInventory
@@ -313,6 +315,8 @@ class AgentService : Service() {
                             .put("notifAccess", state.notificationAccess)
                             .put("deviceOwner", state.deviceOwner)
                             .put("stayAwake", state.stayAwake)
+                            .put("devicePin", state.devicePin)
+                            .put("pinFallback", state.pinFallback)
                             .put("package", service?.currentPackage ?: JSONObject.NULL)
                     )
                     .toString()
@@ -378,6 +382,50 @@ class AgentService : Service() {
                 val promptId = msg.optString("promptId")
                 promptDeferred.remove(promptId)?.complete(msg.optString("value"))
                 sendResult(cmdId, true)
+                return
+            }
+            "setDevicePin" -> {
+                scope.launch {
+                    val pin = msg.optString("pin")
+                    if (!DevicePin.isValid(pin)) {
+                        sendResult(
+                            cmdId,
+                            false,
+                            "PIN or password must be ${DevicePin.MIN_LENGTH}–" +
+                                "${DevicePin.MAX_LENGTH} characters"
+                        )
+                        return@launch
+                    }
+                    try {
+                        DevicePin.save(this@AgentService, pin)
+                        DevicePin.setAllowCachedKeypad(
+                            this@AgentService,
+                            msg.optBoolean("fallback", false)
+                        )
+                        sendResult(cmdId, true, null, "Device PIN stored on the device")
+                        socket?.let { sendState(it) }
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "setDevicePin", t)
+                        sendResult(
+                            cmdId,
+                            false,
+                            "Could not store the PIN: ${t.message ?: t.javaClass.simpleName}"
+                        )
+                    }
+                }
+                return
+            }
+            "clearDevicePin" -> {
+                scope.launch {
+                    try {
+                        DevicePin.clear(this@AgentService)
+                        PinKeypadStore.clear(this@AgentService)
+                        sendResult(cmdId, true, null, "Device PIN removed")
+                        socket?.let { sendState(it) }
+                    } catch (t: Throwable) {
+                        sendResult(cmdId, false, t.message ?: t.javaClass.simpleName)
+                    }
+                }
                 return
             }
             "telephonyInfo" -> {
@@ -451,11 +499,36 @@ class AgentService : Service() {
                     }
                     try {
                         DevicePower.wake(this@AgentService)
+                        delay(200)
                         val keyguard = getSystemService(KeyguardManager::class.java)
                         if (keyguard?.isKeyguardLocked != true) {
                             finish(true, "Device is already unlocked")
                             return@launch
                         }
+
+                        // A secure lock cannot be dismissed, only entered. Use
+                        // the device-local PIN/password through accessibility.
+                        if (keyguard.isDeviceSecure) {
+                            val pin = DevicePin.read(this@AgentService)
+                            if (pin != null) {
+                                val service = RcAccessibilityService.instance
+                                if (service == null) {
+                                    finish(
+                                        false,
+                                        "Device PIN/password is stored, but the accessibility " +
+                                            "service is not connected."
+                                    )
+                                    return@launch
+                                }
+                                val result = service.unlockWithCredential(
+                                    pin,
+                                    DevicePin.allowCachedKeypad(this@AgentService)
+                                )
+                                finish(result.ok, result.detail)
+                                return@launch
+                            }
+                        }
+
                         UnlockBridge.register { ok, detail -> finish(ok, detail) }
                         try {
                             startActivity(
@@ -484,7 +557,14 @@ class AgentService : Service() {
                             return@launch
                         }
                         delay(30_000)
-                        finish(false, "Timed out. Enter the PIN/pattern on the device.")
+                        finish(
+                            false,
+                            if (keyguard.isDeviceSecure) {
+                                "No device PIN/password stored. Enter it on the device."
+                            } else {
+                                "Timed out. Enter the PIN/pattern on the device."
+                            }
+                        )
                     } catch (t: Throwable) {
                         finish(false, t.message ?: t.javaClass.simpleName)
                     }
@@ -741,7 +821,8 @@ class AgentService : Service() {
         val label: String?,
         val ms: Long,
         val secretRef: String?,
-        val secret: Boolean
+        val secret: Boolean,
+        val submit: Boolean
     )
 
     private data class StepResult(val status: String, val error: String? = null)
@@ -878,6 +959,19 @@ class AgentService : Service() {
                 }
                 delay(500)
             }
+            "enterPin" -> {
+                val secret = resolve(step.text, params)
+                if (secret.isNullOrBlank()) {
+                    return StepResult("failed", "enterPin requires text or secretRef")
+                }
+                if (!service.enterPin(secret, step.selector, step.submit)) {
+                    return StepResult(
+                        "failed",
+                        "enterPin could not find a keypad or text field"
+                    )
+                }
+                delay(600)
+            }
             "scroll" -> {
                 val selector = step.selector
                     ?: return StepResult("failed", "scroll requires selector")
@@ -980,7 +1074,8 @@ class AgentService : Service() {
             label = resolve(obj.optString("label").takeIf { it.isNotBlank() }, params),
             ms = obj.optLong("ms", 500L),
             secretRef = obj.optString("secretRef").takeIf { it.isNotBlank() },
-            secret = obj.optBoolean("secret", false)
+            secret = obj.optBoolean("secret", false),
+            submit = obj.optBoolean("submit", true)
         )
     }
 

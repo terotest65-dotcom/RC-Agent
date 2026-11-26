@@ -124,9 +124,20 @@ device charging, and disable battery optimization.
 - **Unlock** opens an invisible activity over the keyguard and calls
   `KeyguardManager.requestDismissKeyguard`.
   - Swipe/None locks dismiss without interaction.
-  - A PIN/pattern/password shows the normal lock screen; the person must enter
-    it. A normal app cannot bypass a secure lock.
-  - Device Owner with screen lock None can remove the keyguard.
+  - With a **Device unlock** credential stored from the admin panel, the agent
+    wakes the screen and reveals the credential bouncer.
+    - A numeric PIN on a keypad is tapped key by key with `dispatchGesture`.
+    - A password bouncer exposes a focused `EditText`; the agent fills it with
+      `ACTION_SET_TEXT`, which handles letters and symbols without driving the
+      keyboard, then submits with `ACTION_IME_ENTER`.
+    - The credential is encrypted with an Android Keystore key and is never
+      returned to the panel or stored by the relay.
+  - Without a stored credential, a PIN/pattern/password shows the normal lock
+    screen; the person must enter it. Device Owner does not bypass a set
+    credential: `setKeyguardDisabled` has no effect while one is configured.
+  - The keyguard is OEM-specific. For PINs, digit labels are the primary path;
+    the opt-in cached layout is used only when labels disappear. Wrong taps
+    count as failed unlock attempts, so test on each model before enabling it.
 - For unattended runs, use no secure screen lock.
 
 ## Telephony

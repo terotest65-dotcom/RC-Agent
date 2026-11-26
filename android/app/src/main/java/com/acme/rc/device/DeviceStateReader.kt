@@ -53,6 +53,8 @@ object DeviceStateReader {
             charging = charging,
             deviceOwner = dpm?.isDeviceOwnerApp(context.packageName) == true,
             stayAwake = stayAwake,
+            devicePin = DevicePin.isConfigured(context),
+            pinFallback = DevicePin.allowCachedKeypad(context),
             androidSdk = Build.VERSION.SDK_INT,
             model = "${Build.MANUFACTURER} ${Build.MODEL}"
         )

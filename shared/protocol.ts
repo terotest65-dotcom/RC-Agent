@@ -34,6 +34,8 @@ export interface DeviceState {
   notifAccess: boolean
   deviceOwner: boolean
   stayAwake: boolean
+  devicePin?: boolean
+  pinFallback?: boolean
   package?: string | null
 }
 
@@ -213,6 +215,7 @@ export type MacroOp =
   | 'tap'
   | 'tapIfExists'
   | 'setText'
+  | 'enterPin'
   | 'scroll'
   | 'globalAction'
   | 'screenshot'
@@ -233,6 +236,7 @@ export interface MacroStep {
   ms?: number
   secretRef?: string
   secret?: boolean
+  submit?: boolean
 }
 
 export interface MacroParam {
@@ -435,6 +439,8 @@ export type ActionName =
   | 'callForward'
   | 'wake'
   | 'unlock'
+  | 'setDevicePin'
+  | 'clearDevicePin'
   | 'launch'
   | 'tap'
   | 'tapXY'

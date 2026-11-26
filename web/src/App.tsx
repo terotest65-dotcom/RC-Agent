@@ -278,8 +278,10 @@ export default function App() {
     ) => {
       if (trackBusy) setBusy(true)
       sendRaw({ t: 'cmd', cmdId: crypto.randomUUID(), deviceId, action, ...extra })
+      const logged: Record<string, unknown> = { ...extra }
+      if ('pin' in logged) logged.pin = '••••'
       appendLog(
-        `→ ${action} ${Object.keys(extra).length ? JSON.stringify(extra) : ''}`
+        `→ ${action} ${Object.keys(logged).length ? JSON.stringify(logged) : ''}`
       )
     },
     [appendLog, sendRaw]
@@ -1037,7 +1039,7 @@ export default function App() {
                 <button
                   className="btn btn-secondary"
                   disabled={actionDisabled}
-                  title="Dismiss the lock screen. A PIN or pattern may be required."
+                  title="Unlock with the stored device PIN/password, Device Owner, or the swipe keyguard."
                   onClick={() => sendCmd(selected.id, 'unlock')}
                 >
                   <Icon name="unlock" />
@@ -1119,6 +1121,20 @@ export default function App() {
                     </div>
 
                     <aside className="control-side">
+                      <DevicePinPanel
+                        key={selected.id}
+                        configured={selected.state?.devicePin === true}
+                        fallback={selected.state?.pinFallback === true}
+                        secureLock={selected.state?.secureLock === true}
+                        busy={busy || !selected.online}
+                        onSave={(pin, allowFallback) =>
+                          sendCmd(selected.id, 'setDevicePin', {
+                            pin,
+                            fallback: allowFallback
+                          })
+                        }
+                        onClear={() => sendCmd(selected.id, 'clearDevicePin')}
+                      />
                       <section className="panel apps-panel">
                         <div className="panel-head apps-head">
                           <div>
@@ -1664,6 +1680,119 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
     default:
       return null
   }
+}
+
+function DevicePinPanel({
+  configured,
+  fallback,
+  secureLock,
+  busy,
+  onSave,
+  onClear
+}: {
+  configured: boolean
+  fallback: boolean
+  secureLock: boolean
+  busy: boolean
+  onSave: (secret: string, allowFallback: boolean) => void
+  onClear: () => void
+}) {
+  const [secret, setSecret] = useState('')
+  const [reveal, setReveal] = useState(false)
+  const [allowFallback, setAllowFallback] = useState(fallback)
+
+  useEffect(() => {
+    setAllowFallback(fallback)
+  }, [fallback])
+
+  const valid = secret.length >= 4 && secret.length <= 64
+
+  return (
+    <section className="panel pin-panel">
+      <div className="panel-head">
+        <div>
+          <h2>Device unlock</h2>
+          <span className="panel-sub">
+            {configured ? 'PIN/password stored' : 'Not stored'}
+          </span>
+        </div>
+        <span className={`pin-badge ${configured ? 'on' : ''}`}>
+          {configured ? 'Set' : 'None'}
+        </span>
+      </div>
+      <div className="pin-body">
+        <p className="pin-copy">
+          Used by <strong>Unlock</strong> for a numeric PIN keypad or a password
+          lock screen. It is encrypted on the device and never sent back to the
+          panel.
+        </p>
+        <div className="pin-row">
+          <input
+            className="input"
+            type={reveal ? 'text' : 'password'}
+            autoComplete="new-password"
+            maxLength={64}
+            value={secret}
+            placeholder={configured ? 'Replace PIN or password…' : 'PIN or password'}
+            onChange={(event) =>
+              setSecret(event.target.value.slice(0, 64))
+            }
+          />
+          <button
+            className="btn btn-ghost btn-small"
+            type="button"
+            onClick={() => setReveal((value) => !value)}
+          >
+            {reveal ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        <label className="pin-check">
+          <input
+            type="checkbox"
+            checked={allowFallback}
+            onChange={(event) => setAllowFallback(event.target.checked)}
+          />
+          <span>
+            Fall back to cached PIN-keypad positions if the labels are missing
+          </span>
+        </label>
+        <div className="panel-actions pin-actions">
+          <button
+            className="btn btn-primary btn-small"
+            type="button"
+            disabled={busy || !valid}
+            onClick={() => {
+              onSave(secret, allowFallback)
+              setSecret('')
+              setReveal(false)
+            }}
+          >
+            Save
+          </button>
+          <button
+            className="btn btn-ghost btn-small"
+            type="button"
+            disabled={busy || !configured}
+            onClick={onClear}
+          >
+            Forget
+          </button>
+        </div>
+        {secureLock && !configured && (
+          <p className="pin-hint">
+            Secure lock is on. Without a stored PIN/password, someone must
+            unlock on the device.
+          </p>
+        )}
+        {allowFallback && (
+          <p className="pin-hint">
+            Blind keypad taps can count as failed unlocks. Leave this off unless
+            the keypad layout is fixed.
+          </p>
+        )}
+      </div>
+    </section>
+  )
 }
 
 function DeviceStats({ state }: { state?: DeviceSummary['state'] }) {
