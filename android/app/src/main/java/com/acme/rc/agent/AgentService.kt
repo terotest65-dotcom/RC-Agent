@@ -998,23 +998,32 @@ class AgentService : Service() {
 
             try {
                 val result = executeStep(step, params)
-                stepStatus = result.status
-                error = result.error
-                when (result.status) {
-                    "failed" -> status = "failed"
-                    "unverified" -> if (status == "success") status = "unverified"
+                if (result.status == "failed" && step.optional) {
+                    stepStatus = "skipped"
+                    error = null
+                } else {
+                    stepStatus = result.status
+                    error = result.error
+                    when (result.status) {
+                        "failed" -> status = "failed"
+                        "unverified" -> if (status == "success") status = "unverified"
+                    }
                 }
                 if (stepStatus != "skipped") {
                     snapshot = captureForReport(step)
                 }
             } catch (t: Throwable) {
-                stepStatus = "failed"
-                error = t.message ?: t.javaClass.simpleName
-                status = "failed"
-                try {
-                    snapshot = service().captureSnapshot()
-                } catch (_: Throwable) {
-                    // Keep the report even if the final screenshot fails.
+                if (step.optional) {
+                    stepStatus = "skipped"
+                } else {
+                    stepStatus = "failed"
+                    error = t.message ?: t.javaClass.simpleName
+                    status = "failed"
+                    try {
+                        snapshot = service().captureSnapshot()
+                    } catch (_: Throwable) {
+                        // Keep the report even if the final screenshot fails.
+                    }
                 }
             }
 
@@ -1231,7 +1240,8 @@ class AgentService : Service() {
             contains = resolve(json.optString("contains").takeIf { it.isNotBlank() }, params),
             desc = resolve(json.optString("desc").takeIf { it.isNotBlank() }, params),
             className = json.optString("className").takeIf { it.isNotBlank() },
-            index = indexText?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+            index = indexText?.toIntOrNull()?.coerceAtLeast(1) ?: 1,
+            ignoreCase = json.optBoolean("ignoreCase", false)
         )
         return if (selector == Selector()) null else selector
     }

@@ -457,6 +457,8 @@ class OtpNotificationListener : NotificationListenerService() {
 | `assert` | Post-condition |
 | `api` | Call an allowlisted official API (future third-party) |
 
+Add `"optional": true` to a step to turn its failure into `skipped` and continue. Use it for best-effort waits, onboarding dialogs, and app-specific result labels that may not exist in every version.
+
 **App-level locks.** App PIN/password screens (banking apps, third-party app
 lockers) are ordinary app windows, not the keyguard, so the system lock rules do
 not apply. Use `enterPin` with a `secretRef` from the Secrets tab:
@@ -495,7 +497,7 @@ Every mutating step should have an `expect`. If it has none, the engine marks it
 
 Priority: `viewId` → `text`/`textContains`/`regex` → `contentDescription` → `hint` → relative position → bounds (last resort) → OCR (not in v1).
 
-A selector can be a combination of `viewId`, `text`, `contains`, `desc`, and `className`. Text matching collapses line breaks and repeated spaces, so a label rendered over two lines still matches its single-line form.
+A selector can be a combination of `viewId`, `text`, `contains`, `desc`, and `className`. Text matching collapses line breaks and repeated spaces, so a label rendered over two lines still matches its single-line form. Set `"ignoreCase": true` to match text without regard to case.
 
 `index` picks the Nth match in accessibility-tree order, **1-based**; the default is the first match. It is resolved through macro params, so a macro can tap the first or second bank without hard-coding a name:
 

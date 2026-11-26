@@ -1745,16 +1745,18 @@ class RcAccessibilityService : AccessibilityService() {
         if (!selector.viewId.isNullOrBlank() &&
             node.viewIdResourceName != selector.viewId
         ) return false
-        val text = node.text?.toString()
+        val fold: (String) -> String =
+            if (selector.ignoreCase) { value -> value.lowercase() } else { value -> value }
+        val text = fold(normalize(node.text?.toString()))
         if (!selector.text.isNullOrBlank() &&
-            normalize(text) != normalize(selector.text)
+            text != fold(normalize(selector.text))
         ) return false
         if (!selector.contains.isNullOrBlank() &&
-            !normalize(text).contains(normalize(selector.contains))
+            !text.contains(fold(normalize(selector.contains)))
         ) return false
-        val description = node.contentDescription?.toString()
+        val description = fold(normalize(node.contentDescription?.toString()))
         if (!selector.desc.isNullOrBlank() &&
-            normalize(description) != normalize(selector.desc)
+            description != fold(normalize(selector.desc))
         ) return false
         if (!selector.className.isNullOrBlank() &&
             node.className?.toString() != selector.className

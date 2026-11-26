@@ -89,7 +89,9 @@ data class Selector(
     val desc: String? = null,
     val className: String? = null,
     /** Pick the Nth match in tree order, 1-based. Defaults to the first. */
-    val index: Int = 1
+    val index: Int = 1,
+    /** Match text, contains, and desc without regard to case. */
+    val ignoreCase: Boolean = false
 )
 
 object TargetApps {

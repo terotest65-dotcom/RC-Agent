@@ -208,6 +208,8 @@ export interface Selector {
   className?: string
   /** Pick the Nth match in tree order, 1-based. Defaults to the first. */
   index?: number | string
+  /** Match text, contains, and desc without regard to case. */
+  ignoreCase?: boolean
 }
 
 export type MacroOp =

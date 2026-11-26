@@ -117,7 +117,8 @@ right-side activity drawer:
   `appUnlock` after `launch` to handle an app-lock prompt; it is a no-op when
   the app is already unlocked. A selector's `index` picks the Nth match
   (1-based) and accepts a `{{param}}`, so a macro can choose the first or second
-  account from a list. Text matching ignores line breaks and repeated spaces.
+  account from a list. Set `ignoreCase` for labels that change case between
+  screens, and `optional: true` on a best-effort step so it can be skipped.
 - **Recorder** — passive per-app recording: click **Record** on an app, then
   open that app on the device yourself. Leaving the app or pressing
   **Stop & save** saves the macro. Live text/tap/scroll feed, text-only
