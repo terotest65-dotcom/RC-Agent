@@ -28,33 +28,182 @@
             android:textColor="#475467"
             android:textSize="14sp" />
 
-        <EditText
-            android:id="@+id/enroll_secret"
+        <RadioGroup
+            android:id="@+id/enroll_type_group"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:hint="@string/enroll_hint"
-            android:imeOptions="actionDone"
-            android:importantForAutofill="no"
-            android:inputType="textPassword"
-            android:maxLength="64"
-            android:singleLine="true"
-            android:textSize="18sp" />
+            android:layout_marginTop="20dp"
+            android:orientation="horizontal">
 
-        <CheckBox
-            android:id="@+id/enroll_show"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/enroll_show" />
+            <RadioButton
+                android:id="@+id/enroll_type_pin"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:text="@string/enroll_type_pin" />
+
+            <RadioButton
+                android:id="@+id/enroll_type_pattern"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:text="@string/enroll_type_pattern" />
+
+            <RadioButton
+                android:id="@+id/enroll_type_password"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/enroll_type_password" />
+        </RadioGroup>
 
         <TextView
+            android:id="@+id/enroll_detected_hint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="@string/enroll_pattern_hint"
             android:textColor="#667085"
             android:textSize="12.5sp" />
+
+        <LinearLayout
+            android:id="@+id/enroll_secret_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <EditText
+                android:id="@+id/enroll_secret"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:imeOptions="actionDone"
+                android:importantForAutofill="no"
+                android:inputType="textPassword"
+                android:maxLength="64"
+                android:singleLine="true"
+                android:textSize="18sp" />
+
+            <CheckBox
+                android:id="@+id/enroll_show"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/enroll_show" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/enroll_pattern_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/enroll_pattern_sequence"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/enroll_pattern_empty"
+                android:textColor="#344054"
+                android:textSize="14sp" />
+
+            <GridLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:columnCount="3"
+                android:rowCount="3">
+
+                <Button
+                    android:id="@+id/enroll_dot_1"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="4dp"
+                    android:text="1"
+                    android:textSize="18sp" />
+
+                <Button
+                    android:id="@+id/enroll_dot_2"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="4dp"
+                    android:text="2"
+                    android:textSize="18sp" />
+
+                <Button
+                    android:id="@+id/enroll_dot_3"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="4dp"
+                    android:text="3"
+                    android:textSize="18sp" />
+
+                <Button
+                    android:id="@+id/enroll_dot_4"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="4dp"
+                    android:text="4"
+                    android:textSize="18sp" />
+
+                <Button
+                    android:id="@+id/enroll_dot_5"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="4dp"
+                    android:text="5"
+                    android:textSize="18sp" />
+
+                <Button
+                    android:id="@+id/enroll_dot_6"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="4dp"
+                    android:text="6"
+                    android:textSize="18sp" />
+
+                <Button
+                    android:id="@+id/enroll_dot_7"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="4dp"
+                    android:text="7"
+                    android:textSize="18sp" />
+
+                <Button
+                    android:id="@+id/enroll_dot_8"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="4dp"
+                    android:text="8"
+                    android:textSize="18sp" />
+
+                <Button
+                    android:id="@+id/enroll_dot_9"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="4dp"
+                    android:text="9"
+                    android:textSize="18sp" />
+            </GridLayout>
+
+            <Button
+                android:id="@+id/enroll_pattern_clear"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:backgroundTint="#e4e7ec"
+                android:text="@string/enroll_pattern_clear"
+                android:textColor="#344054" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/enroll_error"

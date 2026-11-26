@@ -30,6 +30,8 @@ import androidx.core.content.ContextCompat
 import com.acme.rc.agent.AgentService
 import com.acme.rc.device.DevicePin
 import com.acme.rc.device.KeypadLayout
+import com.acme.rc.device.LockType
+import com.acme.rc.device.LockTypeStore
 import com.acme.rc.device.PinKeypadStore
 import com.acme.rc.device.PinUnlockResult
 import com.acme.rc.device.UnlockEnrollment
@@ -75,6 +77,7 @@ class RcAccessibilityService : AccessibilityService() {
 
     private val lastContentChange = AtomicLong(0)
     private var lastScreenshotAt = 0L
+    private val lastLockTypeScan = AtomicLong(0)
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val promptCheck = Runnable { maybePromptForUnlockEnrollment() }
@@ -130,6 +133,10 @@ class RcAccessibilityService : AccessibilityService() {
         // The setup flow may already have unlocked the device before the
         // service connected; check once after startup as well.
         mainHandler.postDelayed(promptCheck, 5_000)
+
+        // The service may connect while the credential bouncer is already
+        // visible, so classify it now.
+        maybeDetectLockType()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -140,6 +147,12 @@ class RcAccessibilityService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             event.packageName?.toString()?.let { currentPackage = it }
             event.className?.toString()?.let { currentActivity = it }
+        }
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) {
+            maybeDetectLockType()
         }
         if (AgentService.recording) {
             try {
@@ -583,6 +596,35 @@ class RcAccessibilityService : AccessibilityService() {
             false,
             "PIN entry did not unlock the device. Android limits repeated attempts."
         )
+    }
+
+    /**
+     * Infer whether the visible bouncer is a PIN keypad, a pattern view, or a
+     * password field. Android has no public API for this, so cache what the
+     * accessibility tree shows while the keyguard is up.
+     */
+    private fun maybeDetectLockType() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastLockTypeScan.get() < 800) return
+        val keyguard = getSystemService(KeyguardManager::class.java) ?: return
+        if (!keyguard.isKeyguardLocked) return
+
+        mainHandler.post {
+            val latest = getSystemService(KeyguardManager::class.java)
+            if (latest?.isKeyguardLocked != true) return@post
+            val type = when {
+                findPatternView() != null -> LockType.PATTERN
+                scanKeypad().digits.size >= 10 -> LockType.PIN
+                findLockScreenField() != null -> LockType.PASSWORD
+                else -> LockType.UNKNOWN
+            }
+            if (type != LockType.UNKNOWN) {
+                // Only throttle after a real classification; the clock screen
+                // and the bouncer can both fire events within a second.
+                lastLockTypeScan.set(SystemClock.elapsedRealtime())
+                LockTypeStore.set(this, type)
+            }
+        }
     }
 
     /**

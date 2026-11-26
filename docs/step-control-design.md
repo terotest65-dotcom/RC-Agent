@@ -152,6 +152,13 @@ local activity stores the value with the same Keystore key and never sends it
 through the relay; the app's status sheet exposes the same screen. Clearing the
 credential re-arms the prompt.
 
+The accessibility service classifies the visible bouncer as a PIN keypad, a
+pattern view, or a password field and caches that type. The enrollment screen
+shows the matching input: a numeric PIN field, a 3×3 pattern pad, or a password
+field. The operator can override the detected type; if classification never
+happened, the screen defaults to the password field and offers the three
+choices.
+
 **Preflight must check:** `KeyguardManager.isKeyguardLocked`, `isDeviceSecure`, screen on, battery/charging, accessibility enabled, notification access (if OTP), target app installed and version. If a check fails, return `preflight_failed` with reasons and do not start the run.
 
 **Note:** `GLOBAL_ACTION_LOCK_SCREEN` can lock the device, but there is no global "unlock" action.

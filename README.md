@@ -93,9 +93,11 @@ right-side activity drawer:
   credential, a secure lock still has to be entered on the device.
 - **Device unlock enrollment** — after the first manual unlock of a secure
   device, the agent offers a one-time notification to save the PIN, password,
-  or pattern. The local screen stores it with the Keystore key and never sends
-  it through the relay. The same credential can also be entered from the panel,
-  and the app's status sheet has an **Enroll** button.
+  or pattern. The enrollment screen detects the lock type and shows a numeric
+  PIN field, a 3×3 pattern pad, or a password field (with a manual override).
+  The credential is stored with the Keystore key and never travels through the
+  relay. The same credential can also be entered from the panel, and the app's
+  status sheet has an **Enroll** button.
 - **Phone** — SIM details and numbers, inbox messages with a compact **Money**
   band for the latest debit/credit/balance SMS, direct SMS sending, and
   carrier-USSD call forwarding (all calls, no answer, busy, unreachable, or a

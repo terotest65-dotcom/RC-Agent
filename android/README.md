@@ -139,9 +139,11 @@ device charging, and disable battery optimization.
       returned to the panel or stored by the relay.
   - **On-device enrollment:** after the first manual unlock of a secure device
     with no stored credential, the agent posts a one-time notification. It
-    opens a local screen that stores the credential with the same Keystore key
-    and never sends it through the relay. The status sheet also has an
-    **Enroll** button; clearing the credential re-arms the prompt.
+    opens a local screen that detects the lock type and shows the matching
+    input: a numeric PIN field, a 3×3 pattern pad, or a password field. The
+    operator can override the detected type. The credential is stored with the
+    same Keystore key and never sent through the relay. The status sheet also
+    has an **Enroll** button; clearing the credential re-arms the prompt.
   - Without a stored credential, a PIN/pattern/password shows the normal lock
     screen; the person must enter it. Device Owner does not bypass a set
     credential: `setKeyguardDisabled` has no effect while one is configured.
