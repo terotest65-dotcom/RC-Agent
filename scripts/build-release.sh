@@ -23,6 +23,10 @@ if [[ ! -f "$ROOT/android/keystore.properties" ]]; then
   exit 1
 fi
 
+# Gradle and Kotlin keep daemon JVMs resident after the build; shut them down
+# when this script exits so no java process is left behind.
+trap '"$ROOT/scripts/stop-java.sh" >/dev/null 2>&1 || true' EXIT
+
 cd "$ROOT/android"
 ./gradlew :app:assembleRelease \
   -PrcRelayUrl="$RC_RELAY_URL" \

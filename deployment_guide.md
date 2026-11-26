@@ -327,7 +327,9 @@ export RC_DEVICE_TOKEN='<RC_DEVICE_TOKEN>'
 ```
 
 It runs the release build with the URL/token, verifies the signature, prints
-the SHA-256 checksum, and reports the certificate.
+the SHA-256 checksum, and reports the certificate. When it exits it also stops
+the Gradle and Kotlin daemon JVMs, so no `java` process stays resident; run
+`./scripts/stop-java.sh` to do that on demand.
 
 Equivalent direct Gradle command:
 
