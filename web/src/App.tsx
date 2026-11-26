@@ -1713,7 +1713,7 @@ function DevicePinPanel({
         <div>
           <h2>Device unlock</h2>
           <span className="panel-sub">
-            {configured ? 'PIN/password stored' : 'Not stored'}
+            {configured ? 'Credential stored' : 'Not stored'}
           </span>
         </div>
         <span className={`pin-badge ${configured ? 'on' : ''}`}>
@@ -1722,9 +1722,10 @@ function DevicePinPanel({
       </div>
       <div className="pin-body">
         <p className="pin-copy">
-          Used by <strong>Unlock</strong> for a numeric PIN keypad or a password
-          lock screen. It is encrypted on the device and never sent back to the
-          panel.
+          Used by <strong>Unlock</strong> for a PIN keypad, a password lock
+          screen, or a pattern. Pattern dots are entered 1–9 row-major (e.g.{' '}
+          <span className="mono">1478</span>). Encrypted on the device; never
+          sent back to the panel.
         </p>
         <div className="pin-row">
           <input
@@ -1733,7 +1734,9 @@ function DevicePinPanel({
             autoComplete="new-password"
             maxLength={64}
             value={secret}
-            placeholder={configured ? 'Replace PIN or password…' : 'PIN or password'}
+            placeholder={
+              configured ? 'Replace PIN, password, or pattern…' : 'PIN, password, or pattern'
+            }
             onChange={(event) =>
               setSecret(event.target.value.slice(0, 64))
             }

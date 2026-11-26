@@ -114,19 +114,21 @@ This is the #1 operational failure mode for unattended runs. Handle it explicitl
 | No secure lock (swipe/none) | An activity with `requestDismissKeyguard()`; `FLAG_SHOW_WHEN_LOCKED` |
 | Secure PIN with a stored credential | `AccessibilityService.dispatchGesture()` taps the keypad (OEM-dependent) |
 | Secure password with a stored credential | `ACTION_SET_TEXT` on the bouncer's focused `EditText`, then `ACTION_IME_ENTER` |
-| Secure PIN/password without a stored credential | **Cannot** be automated by a normal app |
-| Pattern / biometric | **Cannot** be automated by a normal app |
+| Secure pattern with a stored credential | `dispatchGesture()` traces the 3×3 dots from the pattern view bounds |
+| Secure PIN/password/pattern without a stored credential | **Cannot** be automated by a normal app |
+| Biometric | **Cannot** be automated by a normal app |
 | Device Owner | `setKeyguardDisabled(admin, true)` only when no PIN/pattern/password is set |
 
 **Credential entry is a consented accessibility capability, not a sandbox
-bypass.** The device user must enable the accessibility service, and the PIN or
-password is provisioned from the panel and stored encrypted with an Android
-Keystore key. It is never returned to the browser, written to macros/secrets,
-or logged. `MediaProjection` cannot be used to watch the lock screen
-(per-session consent that cannot be approved while locked, and Android 15+
-stops capture on lock), so the agent uses the accessibility tree instead.
+bypass.** The device user must enable the accessibility service, and the PIN,
+password, or pattern is provisioned from the panel or enrolled locally and
+stored encrypted with an Android Keystore key. It is never returned to the
+browser, written to macros/secrets, or logged. `MediaProjection` cannot be used
+to watch the lock screen (per-session consent that cannot be approved while
+locked, and Android 15+ stops capture on lock), so the agent uses the
+accessibility tree instead.
 
-The two paths need different mechanics:
+The three paths need different mechanics:
 
 - **PIN** — locate the digit keys by accessibility label and tap them with
   `dispatchGesture`. The numeric keypad has no usable `ACTION_SET_TEXT` target.
@@ -134,6 +136,10 @@ The two paths need different mechanics:
   fills the whole credential (letters, digits, symbols) in one call, then
   `ACTION_IME_ENTER` submits it. This is more reliable than driving the IME and
   was verified on API 36.
+- **Pattern** — the bouncer exposes a single square `lockPatternView` with no
+  per-dot nodes. Derive the 3×3 dot centers from the view bounds (cell centers)
+  and trace the stored 1–9 sequence in one continuous gesture. OEM padding and
+  view IDs vary; test on each model.
 
 Android escalates failed unlock attempts; the agent makes **one** attempt per
 unlock command and never brute-forces. Blind keypad tapping is opt-in and only

@@ -11,8 +11,8 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * The device unlock credential (numeric PIN or alphanumeric password),
- * encrypted with an Android Keystore key.
+ * The device unlock credential (numeric PIN, alphanumeric password, or pattern
+ * dot sequence), encrypted with an Android Keystore key.
  *
  * The credential never leaves the device after provisioning and is never
  * written to logs, snapshots, run reports, or the relay's JSON files. The
@@ -34,6 +34,12 @@ object DevicePin {
     fun isValid(secret: String): Boolean =
         secret.length in MIN_LENGTH..MAX_LENGTH &&
             secret.none { it < ' ' || it == '\u007F' }
+
+    /** A pattern is stored as its dots in row-major order, 1–9, no repeats. */
+    fun isValidPattern(secret: String): Boolean =
+        secret.length in 4..9 &&
+            secret.all { it in '1'..'9' } &&
+            secret.toSet().size == secret.length
 
     /** Presence check that does not decrypt the PIN. */
     fun isConfigured(context: Context): Boolean =

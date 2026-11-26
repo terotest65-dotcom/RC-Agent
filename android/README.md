@@ -131,6 +131,10 @@ device charging, and disable battery optimization.
     - A password bouncer exposes a focused `EditText`; the agent fills it with
       `ACTION_SET_TEXT`, which handles letters and symbols without driving the
       keyboard, then submits with `ACTION_IME_ENTER`.
+    - A pattern bouncer exposes a square `lockPatternView` with no per-dot
+      nodes; the agent derives the 3×3 dot centers from its bounds and traces
+      the stored sequence as one continuous `dispatchGesture`. Patterns are
+      stored as their dot numbers 1–9 in row-major order (e.g. `1478`).
     - The credential is encrypted with an Android Keystore key and is never
       returned to the panel or stored by the relay.
   - **On-device enrollment:** after the first manual unlock of a secure device

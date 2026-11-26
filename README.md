@@ -86,16 +86,16 @@ right-side activity drawer:
   (`Insert` = set text, `Insert + Enter` = set text and press the IME enter key),
   plus **Wake** and **Unlock** actions and a **Device unlock** panel. Wake
   works while the screen is off. Unlock dismisses a swipe/no-security keyguard,
-  and for a secure lock it can enter a PIN or password stored on the device —
-  PIN keypads are tapped with accessibility gestures, password fields are
-  filled with set-text. Device Owner only disables a keyguard that has no
-  credential set. Without a stored credential, a secure lock still has to be
-  entered on the device.
+  and for a secure lock it can enter a PIN, password, or pattern stored on the
+  device — PIN keypads are tapped with accessibility gestures, password fields
+  are filled with set-text, and patterns are traced through the 3×3 dots. Device
+  Owner only disables a keyguard that has no credential set. Without a stored
+  credential, a secure lock still has to be entered on the device.
 - **Device unlock enrollment** — after the first manual unlock of a secure
-  device, the agent offers a one-time notification to save the PIN/password.
-  The local screen stores it with the Keystore key and never sends it through
-  the relay. The same credential can also be entered from the panel, and the
-  app's status sheet has an **Enroll** button.
+  device, the agent offers a one-time notification to save the PIN, password,
+  or pattern. The local screen stores it with the Keystore key and never sends
+  it through the relay. The same credential can also be entered from the panel,
+  and the app's status sheet has an **Enroll** button.
 - **Phone** — SIM details and numbers, inbox messages with a compact **Money**
   band for the latest debit/credit/balance SMS, direct SMS sending, and
   carrier-USSD call forwarding (all calls, no answer, busy, unreachable, or a

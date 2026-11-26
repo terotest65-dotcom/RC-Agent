@@ -414,7 +414,8 @@ class RcAccessibilityService : AccessibilityService() {
      *
      * A numeric credential on a PIN keypad is tapped key by key. On a password
      * bouncer the focused EditText is filled with ACTION_SET_TEXT, which also
-     * handles letters and symbols without driving the keyboard.
+     * handles letters and symbols without driving the keyboard. A pattern lock
+     * is traced as one continuous gesture through the 3x3 dots.
      *
      * One attempt per command: Android escalates failed unlock attempts, and a
      * blind retry can burn another one.
@@ -466,6 +467,15 @@ class RcAccessibilityService : AccessibilityService() {
         if (keypad.digits.size < 10) {
             findLockScreenField()?.let { field ->
                 enterPassword(field, secret)?.let { return@withContext it }
+            }
+        }
+
+        // Pattern bouncers expose a square LockPatternView with no per-dot
+        // nodes. Derive the 3x3 dot centers from the view bounds and trace the
+        // stored 1–9 sequence in one continuous gesture.
+        if (keypad.digits.size < 10) {
+            findPatternView()?.let { bounds ->
+                return@withContext enterPattern(bounds, secret)
             }
         }
 
@@ -784,11 +794,107 @@ class RcAccessibilityService : AccessibilityService() {
         return focused?.let { editableField(it) } ?: findFirstEditable(root)
     }
 
+    private fun findPatternView(): Rect? {
+        for (root in orderedWindowRoots()) {
+            findPatternViewIn(root, 0)?.let { return it }
+        }
+        return null
+    }
+
+    private fun findPatternViewIn(node: AccessibilityNodeInfo?, depth: Int): Rect? {
+        if (node == null || depth > 60) return null
+        val viewId = node.viewIdResourceName.orEmpty()
+        val className = node.className?.toString().orEmpty()
+        val description = node.contentDescription?.toString().orEmpty()
+        val looksLikePattern =
+            viewId.endsWith("lockPatternView") ||
+                className.contains("LockPatternView") ||
+                (description.contains("pattern", ignoreCase = true) &&
+                    !description.contains("incorrect", ignoreCase = true))
+
+        if (looksLikePattern) {
+            val bounds = Rect()
+            try {
+                node.getBoundsInScreen(bounds)
+            } catch (_: Throwable) {
+                // Stale node; keep looking.
+            }
+            if (!bounds.isEmpty) {
+                val ratio = bounds.width().toFloat() / bounds.height().coerceAtLeast(1)
+                if (ratio in 0.8f..1.2f && bounds.width() > 240) return bounds
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = try {
+                node.getChild(i)
+            } catch (_: Throwable) {
+                null
+            }
+            findPatternViewIn(child, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    /**
+     * Traces the stored dot sequence through the 3x3 pattern view. The view is
+     * one custom canvas node, so the dot centers come from its square bounds.
+     */
+    private suspend fun enterPattern(
+        bounds: Rect,
+        secret: String
+    ): PinUnlockResult {
+        if (!DevicePin.isValidPattern(secret)) {
+            return PinUnlockResult(
+                false,
+                "The lock screen is a pattern, but the stored credential is not " +
+                    "a 4–9 dot sequence."
+            )
+        }
+
+        val cellWidth = bounds.width() / 3f
+        val cellHeight = bounds.height() / 3f
+        val points = secret.map { digit ->
+            val index = digit - '1'
+            val row = index / 3
+            val column = index % 3
+            PointF(
+                bounds.left + (column + 0.5f) * cellWidth,
+                bounds.top + (row + 0.5f) * cellHeight
+            )
+        }
+        val path = Path().apply {
+            moveTo(points.first().x, points.first().y)
+            for (point in points.drop(1)) lineTo(point.x, point.y)
+        }
+
+        // A one-second stroke gives the pattern view enough samples to register
+        // every dot without pausing and lifting the finger.
+        if (!gestureAndAwait(path, 1_000)) {
+            return PinUnlockResult(false, "Pattern gesture was rejected")
+        }
+        if (awaitUnlocked(2_500)) {
+            return PinUnlockResult(true, "Unlocked with device pattern")
+        }
+        return PinUnlockResult(
+            false,
+            "The stored pattern did not unlock the device. Android limits repeated attempts."
+        )
+    }
+
     private suspend fun tapAndAwait(x: Int, y: Int): Boolean {
-        val completed = withTimeoutOrNull(1500) {
+        val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+        return gestureAndAwait(path, 60)
+    }
+
+    private suspend fun gestureAndAwait(
+        path: Path,
+        durationMs: Long,
+        timeoutMs: Long = if (durationMs > 1_000) durationMs + 2_000 else 1_500
+    ): Boolean {
+        val completed = withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { cont ->
-                val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
-                val stroke = GestureDescription.StrokeDescription(path, 0, 60)
+                val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
                 val gesture = GestureDescription.Builder().addStroke(stroke).build()
                 val callback = object : AccessibilityService.GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription?) {
