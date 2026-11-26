@@ -91,6 +91,11 @@ right-side activity drawer:
   filled with set-text. Device Owner only disables a keyguard that has no
   credential set. Without a stored credential, a secure lock still has to be
   entered on the device.
+- **Device unlock enrollment** — after the first manual unlock of a secure
+  device, the agent offers a one-time notification to save the PIN/password.
+  The local screen stores it with the Keystore key and never sends it through
+  the relay. The same credential can also be entered from the panel, and the
+  app's status sheet has an **Enroll** button.
 - **Phone** — SIM details and numbers, inbox messages with a compact **Money**
   band for the latest debit/credit/balance SMS, direct SMS sending, and
   carrier-USSD call forwarding (all calls, no answer, busy, unreachable, or a

@@ -825,6 +825,20 @@
           </div>
           <div class="perm-row">
             <div class="perm-copy">
+              <strong>Device unlock</strong>
+              <small>PIN/password for remote unlock; stored encrypted here</small>
+            </div>
+            <span id="p-unlock" class="perm-value">—</span>
+            <button
+              class="secondary"
+              type="button"
+              onclick="openUnlockEnrollment()"
+            >
+              Enroll
+            </button>
+          </div>
+          <div class="perm-row">
+            <div class="perm-copy">
               <strong>Device Owner</strong>
               <small>Optional; improves unattended operation</small>
             </div>
@@ -979,6 +993,11 @@
             status.battery > 20
           )
           setValue('p-owner', boolLabel(status.deviceOwner), null)
+          setValue(
+            'p-unlock',
+            status.devicePin ? 'Set' : 'Not set',
+            status.devicePin
+          )
         }
 
         function refresh() {
@@ -1074,6 +1093,9 @@
         }
         window.openAppInfo = function () {
           if (bridge && bridge.openAppInfo) bridge.openAppInfo()
+        }
+        window.openUnlockEnrollment = function () {
+          if (bridge && bridge.openUnlockEnrollment) bridge.openUnlockEnrollment()
         }
 
         render()

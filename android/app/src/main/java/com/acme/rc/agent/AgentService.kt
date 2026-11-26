@@ -31,6 +31,7 @@ import com.acme.rc.device.DeviceStateReader
 import com.acme.rc.device.PinKeypadStore
 import com.acme.rc.device.UnlockActivity
 import com.acme.rc.device.UnlockBridge
+import com.acme.rc.device.UnlockEnrollment
 import com.acme.rc.inventory.AppInventory
 import com.acme.rc.model.AppInfo
 import com.acme.rc.model.Element
@@ -326,6 +327,11 @@ class AgentService : Service() {
         }
     }
 
+    /** Push the current device state after a local credential change. */
+    fun refreshState() {
+        socket?.let { sendState(it) }
+    }
+
     // -----------------------------------------------------------------
     // Commands
     // -----------------------------------------------------------------
@@ -403,6 +409,7 @@ class AgentService : Service() {
                             msg.optBoolean("fallback", false)
                         )
                         sendResult(cmdId, true, null, "Device PIN stored on the device")
+                        UnlockEnrollment.cancel(this@AgentService)
                         socket?.let { sendState(it) }
                     } catch (t: Throwable) {
                         Log.w(TAG, "setDevicePin", t)
@@ -420,6 +427,7 @@ class AgentService : Service() {
                     try {
                         DevicePin.clear(this@AgentService)
                         PinKeypadStore.clear(this@AgentService)
+                        UnlockEnrollment.reset(this@AgentService)
                         sendResult(cmdId, true, null, "Device PIN removed")
                         socket?.let { sendState(it) }
                     } catch (t: Throwable) {

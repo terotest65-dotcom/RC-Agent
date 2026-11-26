@@ -124,14 +124,20 @@ device charging, and disable battery optimization.
 - **Unlock** opens an invisible activity over the keyguard and calls
   `KeyguardManager.requestDismissKeyguard`.
   - Swipe/None locks dismiss without interaction.
-  - With a **Device unlock** credential stored from the admin panel, the agent
-    wakes the screen and reveals the credential bouncer.
+  - With a **Device unlock** credential stored from the admin panel or enrolled
+    on the device, the agent wakes the screen and reveals the credential
+    bouncer.
     - A numeric PIN on a keypad is tapped key by key with `dispatchGesture`.
     - A password bouncer exposes a focused `EditText`; the agent fills it with
       `ACTION_SET_TEXT`, which handles letters and symbols without driving the
       keyboard, then submits with `ACTION_IME_ENTER`.
     - The credential is encrypted with an Android Keystore key and is never
       returned to the panel or stored by the relay.
+  - **On-device enrollment:** after the first manual unlock of a secure device
+    with no stored credential, the agent posts a one-time notification. It
+    opens a local screen that stores the credential with the same Keystore key
+    and never sends it through the relay. The status sheet also has an
+    **Enroll** button; clearing the credential re-arms the prompt.
   - Without a stored credential, a PIN/pattern/password shows the normal lock
     screen; the person must enter it. Device Owner does not bypass a set
     credential: `setKeyguardDisabled` has no effect while one is configured.

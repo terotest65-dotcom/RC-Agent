@@ -23,6 +23,7 @@ import com.acme.rc.agent.AgentConfig
 import com.acme.rc.agent.AgentConnection
 import com.acme.rc.agent.AgentService
 import com.acme.rc.device.DeviceStateReader
+import com.acme.rc.device.EnrollUnlockActivity
 import org.json.JSONObject
 
 /**
@@ -281,6 +282,7 @@ class MainActivity : Activity() {
             .put("deviceOwner", state.deviceOwner)
             .put("screenOn", state.screenOn)
             .put("locked", state.locked)
+            .put("devicePin", state.devicePin)
             .put("permissions", permissions)
             .toString()
     }
@@ -361,6 +363,15 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun openAppInfo() {
             runOnUiThread { openAppInfo() }
+        }
+
+        @JavascriptInterface
+        fun openUnlockEnrollment() {
+            runOnUiThread {
+                startActivity(
+                    Intent(this@MainActivity, EnrollUnlockActivity::class.java)
+                )
+            }
         }
     }
 }

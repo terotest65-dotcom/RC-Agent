@@ -139,6 +139,13 @@ Android escalates failed unlock attempts; the agent makes **one** attempt per
 unlock command and never brute-forces. Blind keypad tapping is opt-in and only
 applies to numeric credentials.
 
+**Enrollment.** The credential can be provisioned from the panel or entered
+locally on the device. After the first manual unlock of a secure device with no
+stored credential, the accessibility service posts a one-time notification. The
+local activity stores the value with the same Keystore key and never sends it
+through the relay; the app's status sheet exposes the same screen. Clearing the
+credential re-arms the prompt.
+
 **Preflight must check:** `KeyguardManager.isKeyguardLocked`, `isDeviceSecure`, screen on, battery/charging, accessibility enabled, notification access (if OTP), target app installed and version. If a check fails, return `preflight_failed` with reasons and do not start the run.
 
 **Note:** `GLOBAL_ACTION_LOCK_SCREEN` can lock the device, but there is no global "unlock" action.

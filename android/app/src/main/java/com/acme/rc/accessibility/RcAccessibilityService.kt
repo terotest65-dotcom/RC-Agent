@@ -4,7 +4,10 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.app.KeyguardManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Point
@@ -13,6 +16,8 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.hardware.display.DisplayManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
@@ -27,6 +32,7 @@ import com.acme.rc.device.DevicePin
 import com.acme.rc.device.KeypadLayout
 import com.acme.rc.device.PinKeypadStore
 import com.acme.rc.device.PinUnlockResult
+import com.acme.rc.device.UnlockEnrollment
 import com.acme.rc.model.Element
 import com.acme.rc.model.ProbeResult
 import com.acme.rc.model.Selector
@@ -70,6 +76,17 @@ class RcAccessibilityService : AccessibilityService() {
     private val lastContentChange = AtomicLong(0)
     private var lastScreenshotAt = 0L
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val promptCheck = Runnable { maybePromptForUnlockEnrollment() }
+    private val userPresentReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_USER_PRESENT) {
+                // Let the keyguard state settle before checking it.
+                mainHandler.postDelayed(promptCheck, 400)
+            }
+        }
+    }
+
     private val keypadDigitId = Regex(
         "(?:key|digit|num)[_-]?([0-9])$",
         RegexOption.IGNORE_CASE
@@ -91,12 +108,28 @@ class RcAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         Log.i(TAG, "accessibility service connected")
-        val info = serviceInfo ?: return
-        info.flags = info.flags or
-            AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-            AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
-            AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        serviceInfo = info
+        serviceInfo?.let { info ->
+            info.flags = info.flags or
+                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
+                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            serviceInfo = info
+        }
+
+        try {
+            ContextCompat.registerReceiver(
+                this,
+                userPresentReceiver,
+                IntentFilter(Intent.ACTION_USER_PRESENT),
+                ContextCompat.RECEIVER_EXPORTED
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "could not register unlock prompt receiver", t)
+        }
+
+        // The setup flow may already have unlocked the device before the
+        // service connected; check once after startup as well.
+        mainHandler.postDelayed(promptCheck, 5_000)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -120,6 +153,12 @@ class RcAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(promptCheck)
+        try {
+            unregisterReceiver(userPresentReceiver)
+        } catch (_: Throwable) {
+            // Not registered, or the process is tearing down.
+        }
         if (instance === this) instance = null
         Log.i(TAG, "accessibility service destroyed")
         super.onDestroy()
@@ -534,6 +573,18 @@ class RcAccessibilityService : AccessibilityService() {
             false,
             "PIN entry did not unlock the device. Android limits repeated attempts."
         )
+    }
+
+    /**
+     * Offer the one-time local enrollment after a manual unlock when the device
+     * is secure and no credential is stored.
+     */
+    private fun maybePromptForUnlockEnrollment() {
+        if (DevicePin.isConfigured(this)) return
+        val keyguard = getSystemService(KeyguardManager::class.java) ?: return
+        if (!keyguard.isDeviceSecure || keyguard.isKeyguardLocked) return
+        if (!UnlockEnrollment.shouldPrompt(this)) return
+        UnlockEnrollment.prompt(this)
     }
 
     private suspend fun waitForInteractive(timeoutMs: Long = 1500) {

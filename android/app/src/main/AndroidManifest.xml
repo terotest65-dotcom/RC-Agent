@@ -58,6 +58,15 @@
             android:turnScreenOn="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <activity
+            android:name=".device.EnrollUnlockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:label="@string/enroll_title"
+            android:theme="@style/Theme.RcAgent"
+            android:windowSoftInputMode="adjustResize" />
+
         <service
             android:name=".accessibility.RcAccessibilityService"
             android:exported="true"
