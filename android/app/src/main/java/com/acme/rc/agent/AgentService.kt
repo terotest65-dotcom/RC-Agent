@@ -25,6 +25,7 @@ import androidx.core.app.ServiceCompat
 import com.acme.rc.MainActivity
 import com.acme.rc.accessibility.RcAccessibilityService
 import com.acme.rc.admin.RcDeviceAdminReceiver
+import com.acme.rc.device.AppUnlockStore
 import com.acme.rc.device.DevicePin
 import com.acme.rc.device.DevicePower
 import com.acme.rc.device.DeviceStateReader
@@ -318,6 +319,7 @@ class AgentService : Service() {
                             .put("stayAwake", state.stayAwake)
                             .put("devicePin", state.devicePin)
                             .put("pinFallback", state.pinFallback)
+                            .put("appUnlockPackages", JSONArray(state.appUnlockPackages))
                             .put("package", service?.currentPackage ?: JSONObject.NULL)
                     )
                     .toString()
@@ -429,6 +431,56 @@ class AgentService : Service() {
                         PinKeypadStore.clear(this@AgentService)
                         UnlockEnrollment.reset(this@AgentService)
                         sendResult(cmdId, true, null, "Device PIN removed")
+                        socket?.let { sendState(it) }
+                    } catch (t: Throwable) {
+                        sendResult(cmdId, false, t.message ?: t.javaClass.simpleName)
+                    }
+                }
+                return
+            }
+            "setAppUnlock" -> {
+                scope.launch {
+                    val pkg = msg.optString("package")
+                    val secret = msg.optString("secret")
+                    if (pkg.isBlank()) {
+                        sendResult(cmdId, false, "App package is required")
+                        return@launch
+                    }
+                    if (!AppUnlockStore.isValid(secret)) {
+                        sendResult(
+                            cmdId,
+                            false,
+                            "Credential must be ${DevicePin.MIN_LENGTH}–" +
+                                "${DevicePin.MAX_LENGTH} characters"
+                        )
+                        return@launch
+                    }
+                    try {
+                        AppUnlockStore.save(this@AgentService, pkg, secret)
+                        sendResult(cmdId, true, null, "App credential stored for $pkg")
+                        socket?.let { sendState(it) }
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "setAppUnlock", t)
+                        sendResult(
+                            cmdId,
+                            false,
+                            "Could not store the app credential: " +
+                                (t.message ?: t.javaClass.simpleName)
+                        )
+                    }
+                }
+                return
+            }
+            "clearAppUnlock" -> {
+                scope.launch {
+                    val pkg = msg.optString("package")
+                    if (pkg.isBlank()) {
+                        sendResult(cmdId, false, "App package is required")
+                        return@launch
+                    }
+                    try {
+                        AppUnlockStore.clear(this@AgentService, pkg)
+                        sendResult(cmdId, true, null, "App credential removed for $pkg")
                         socket?.let { sendState(it) }
                     } catch (t: Throwable) {
                         sendResult(cmdId, false, t.message ?: t.javaClass.simpleName)
@@ -575,6 +627,29 @@ class AgentService : Service() {
                         )
                     } catch (t: Throwable) {
                         finish(false, t.message ?: t.javaClass.simpleName)
+                    }
+                }
+                return
+            }
+            "appUnlock" -> {
+                scope.launch {
+                    try {
+                        val service = RcAccessibilityService.instance
+                            ?: error("Accessibility service is not connected")
+                        val target = msg.optString("package").takeIf { it.isNotBlank() }
+                        val result = service.unlockApp(target)
+                        sendResult(
+                            cmdId,
+                            result.ok,
+                            if (result.ok) null else result.detail,
+                            result.detail
+                        )
+                        if (result.ok) {
+                            delay(700)
+                            captureAndSend()
+                        }
+                    } catch (t: Throwable) {
+                        sendResult(cmdId, false, t.message ?: t.javaClass.simpleName)
                     }
                 }
                 return

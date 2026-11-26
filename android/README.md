@@ -152,6 +152,21 @@ device charging, and disable battery optimization.
     count as failed unlock attempts, so test on each model before enabling it.
 - For unattended runs, use no secure screen lock.
 
+## App unlock
+
+The **App unlock** panel targets the foreground app.
+
+- App locks that use the device screen lock (MIUI/POCO App lock, Samsung, etc.)
+  show a biometric prompt with a **Use password/PIN/pattern** option. The agent
+  taps that option, then enters the device unlock credential.
+- App locks with their own credential read a per-app value stored from the
+  panel, keyed by package and encrypted with a separate Keystore key. Leave the
+  per-app field empty to use the device credential.
+- The credential screen is detected in the foreground window: a square pattern
+  view, a 3-column digit keypad, or an editable field. One attempt.
+- Biometric-only locks, custom canvas keypads with no accessible digits, and
+  apps that block accessibility input still need manual handling.
+
 ## Telephony
 
 - **Lines** — carrier, slot, number, country, MCC/MNC, state, signal, data,

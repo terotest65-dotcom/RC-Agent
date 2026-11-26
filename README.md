@@ -98,6 +98,11 @@ right-side activity drawer:
   The credential is stored with the Keystore key and never travels through the
   relay. The same credential can also be entered from the panel, and the app's
   status sheet has an **Enroll** button.
+- **App unlock** — targets the foreground app. It taps the device's
+  “Use password/PIN/pattern/screen lock” option when an app lock offers
+  biometrics, then enters a per-app credential if one is stored, otherwise the
+  device unlock credential. MIUI/POCO App lock uses the device credential, so
+  the per-app field can stay empty.
 - **Phone** — SIM details and numbers, inbox messages with a compact **Money**
   band for the latest debit/credit/balance SMS, direct SMS sending, and
   carrier-USSD call forwarding (all calls, no answer, busy, unreachable, or a

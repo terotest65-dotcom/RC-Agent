@@ -28,6 +28,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.core.content.ContextCompat
 import com.acme.rc.agent.AgentService
+import com.acme.rc.device.AppUnlockStore
 import com.acme.rc.device.DevicePin
 import com.acme.rc.device.KeypadLayout
 import com.acme.rc.device.LockType
@@ -72,6 +73,12 @@ class RcAccessibilityService : AccessibilityService() {
         )
         private val PIN_SWITCH_LABELS = setOf(
             "pin", "use pin", "enter pin", "use pin instead", "use your pin"
+        )
+        private val SCREEN_LOCK_TERMS = listOf(
+            "use password", "use pin", "use pattern", "use screen lock",
+            "use device", "use passcode", "use lock screen", "unlock with",
+            "enter password", "enter pin", "enter pattern", "enter screen lock",
+            "use backup", "switch to password", "switch to pin", "switch to pattern"
         )
     }
 
@@ -893,7 +900,20 @@ class RcAccessibilityService : AccessibilityService() {
                     "a 4–9 dot sequence."
             )
         }
+        if (!drawPattern(bounds, secret)) {
+            return PinUnlockResult(false, "Pattern gesture was rejected")
+        }
+        if (awaitUnlocked(2_500)) {
+            return PinUnlockResult(true, "Unlocked with device pattern")
+        }
+        return PinUnlockResult(
+            false,
+            "The stored pattern did not unlock the device. Android limits repeated attempts."
+        )
+    }
 
+    private suspend fun drawPattern(bounds: Rect, secret: String): Boolean {
+        if (!DevicePin.isValidPattern(secret)) return false
         val cellWidth = bounds.width() / 3f
         val cellHeight = bounds.height() / 3f
         val points = secret.map { digit ->
@@ -912,16 +932,199 @@ class RcAccessibilityService : AccessibilityService() {
 
         // A one-second stroke gives the pattern view enough samples to register
         // every dot without pausing and lifting the finger.
-        if (!gestureAndAwait(path, 1_000)) {
-            return PinUnlockResult(false, "Pattern gesture was rejected")
+        return gestureAndAwait(path, 1_000)
+    }
+
+    /**
+     * Unlocks an app-lock screen in the foreground.
+     *
+     * App locks come in two shapes:
+     * - a screen-lock fallback (MIUI/POCO App lock, Samsung, etc.) where the
+     *   prompt offers fingerprint and then the device PIN/pattern/password;
+     * - an app-specific PIN, password, or pattern.
+     *
+     * Taps the "Use PIN/password/pattern/screen lock" option when present, then
+     * enters the per-app credential if one is stored, otherwise the device
+     * credential. One attempt; the caller can verify on the device.
+     */
+    suspend fun unlockApp(targetPackage: String? = null): PinUnlockResult =
+        withContext(Dispatchers.Default) {
+            val target = targetPackage?.takeIf { it.isNotBlank() } ?: currentPackage
+            val startPackage = currentPackage
+            val appSecret = target?.let {
+                AppUnlockStore.read(this@RcAccessibilityService, it)
+            }
+            val deviceSecret = DevicePin.read(this@RcAccessibilityService)
+            val secret = appSecret ?: deviceSecret
+            if (secret == null || !DevicePin.isValid(secret)) {
+                return@withContext PinUnlockResult(
+                    false,
+                    "No app credential or device unlock credential is stored."
+                )
+            }
+
+            // Some devices show the credential field immediately; others show a
+            // biometric prompt with a "Use PIN/password/pattern" fallback.
+            var fallback = findScreenLockOption()
+            if (fallback == null && !isCredentialScreenPresent()) {
+                fallback = awaitScreenLockOption(2_000)
+            }
+            if (fallback != null) {
+                if (!tapAndAwait(fallback.x, fallback.y)) {
+                    return@withContext PinUnlockResult(
+                        false,
+                        "Could not open the Use password/PIN/pattern option."
+                    )
+                }
+                delay(500)
+            }
+
+            if (!isCredentialScreenPresent()) {
+                return@withContext PinUnlockResult(
+                    false,
+                    "No app-lock credential screen is visible. If a biometric " +
+                        "prompt is showing, tap Use password on the device and retry."
+                )
+            }
+
+            if (!enterAppCredential(secret)) {
+                return@withContext PinUnlockResult(
+                    false,
+                    "Could not enter the credential on the app-lock screen."
+                )
+            }
+
+            if (awaitAppUnlocked(target, startPackage)) {
+                return@withContext PinUnlockResult(
+                    true,
+                    if (appSecret != null) "App unlocked with its stored credential"
+                    else "App unlocked with the device credential"
+                )
+            }
+            return@withContext PinUnlockResult(
+                false,
+                "The app-lock credential did not unlock the app. " +
+                    "Android may limit repeated attempts."
+            )
         }
-        if (awaitUnlocked(2_500)) {
-            return PinUnlockResult(true, "Unlocked with device pattern")
+
+    private fun findScreenLockOption(): Point? {
+        for (root in orderedWindowRoots()) {
+            findClickableLabelContaining(root, SCREEN_LOCK_TERMS, 0)?.let { return it }
         }
-        return PinUnlockResult(
-            false,
-            "The stored pattern did not unlock the device. Android limits repeated attempts."
-        )
+        return null
+    }
+
+    private suspend fun awaitScreenLockOption(timeoutMs: Long): Point? {
+        val started = SystemClock.elapsedRealtime()
+        while (SystemClock.elapsedRealtime() - started < timeoutMs) {
+            findScreenLockOption()?.let { return it }
+            delay(150)
+        }
+        return findScreenLockOption()
+    }
+
+    private fun findClickableLabelContaining(
+        node: AccessibilityNodeInfo?,
+        terms: List<String>,
+        depth: Int
+    ): Point? {
+        if (node == null || depth > 60) return null
+        val label = (node.text?.toString() ?: node.contentDescription?.toString())
+            ?.trim()
+            ?.lowercase()
+        if (label != null && terms.any { label.contains(it) }) {
+            clickableBounds(node, requireClickable = true)?.let {
+                return Point(it.centerX(), it.centerY())
+            }
+        }
+        for (i in 0 until node.childCount) {
+            val child = try {
+                node.getChild(i)
+            } catch (_: Throwable) {
+                null
+            }
+            findClickableLabelContaining(child, terms, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    private fun isCredentialScreenPresent(): Boolean =
+        findPatternView() != null ||
+            scanKeypad().digits.size >= 10 ||
+            findLockScreenField() != null ||
+            findAppField() != null
+
+    private suspend fun enterAppCredential(secret: String): Boolean {
+        findPatternView()?.let { bounds ->
+            return drawPattern(bounds, secret)
+        }
+
+        val keypad = scanKeypad()
+        if (secret.all { it.isDigit() } && keypad.digits.size >= 10) {
+            for (digit in secret) {
+                val point = keypad.digits[digit] ?: return false
+                if (!tapAndAwait(point.x, point.y)) return false
+                delay(80)
+            }
+            val enter = keypad.enter ?: findEnterButton()
+            enter?.let { tapAndAwait(it.x, it.y) }
+            return true
+        }
+
+        val field = findLockScreenField() ?: findAppField() ?: return false
+        val set = try {
+            field.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            val arguments = Bundle().apply {
+                putCharSequence(
+                    AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    secret
+                )
+            }
+            field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        } catch (_: Throwable) {
+            false
+        }
+        if (!set) return false
+
+        delay(150)
+        val enterButton = findEnterButton()
+        if (enterButton != null) {
+            tapAndAwait(enterButton.x, enterButton.y)
+        } else {
+            try {
+                field.performAction(
+                    AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id
+                )
+            } catch (_: Throwable) {
+                // The app did not expose an IME action.
+            }
+        }
+        return true
+    }
+
+    private suspend fun awaitAppUnlocked(
+        target: String?,
+        startPackage: String?
+    ): Boolean {
+        val started = SystemClock.elapsedRealtime()
+        while (SystemClock.elapsedRealtime() - started < 3_000) {
+            val fallback = findScreenLockOption()
+            val credentialUi = isCredentialScreenPresent()
+            if (fallback == null && !credentialUi) return true
+
+            // A system app-lock window (MIUI/POCO, Samsung) hands control to the
+            // target app; an in-app lock keeps the same package and must be
+            // verified by the credential UI disappearing.
+            if (target != null &&
+                startPackage != target &&
+                currentPackage == target
+            ) {
+                return true
+            }
+            delay(200)
+        }
+        return findScreenLockOption() == null && !isCredentialScreenPresent()
     }
 
     private suspend fun tapAndAwait(x: Int, y: Int): Boolean {

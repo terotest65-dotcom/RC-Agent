@@ -77,6 +77,7 @@ data class DeviceState(
     val stayAwake: Boolean,
     val devicePin: Boolean,
     val pinFallback: Boolean,
+    val appUnlockPackages: List<String>,
     val androidSdk: Int,
     val model: String
 )

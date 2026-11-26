@@ -280,6 +280,7 @@ export default function App() {
       sendRaw({ t: 'cmd', cmdId: crypto.randomUUID(), deviceId, action, ...extra })
       const logged: Record<string, unknown> = { ...extra }
       if ('pin' in logged) logged.pin = '••••'
+      if ('secret' in logged) logged.secret = '••••'
       appendLog(
         `→ ${action} ${Object.keys(logged).length ? JSON.stringify(logged) : ''}`
       )
@@ -595,6 +596,14 @@ export default function App() {
   }, [tab, selectedId])
 
   const selected = devices.find((d) => d.id === selectedId) ?? null
+  const foregroundPackage = selected?.state?.package ?? null
+  const foregroundLabel = foregroundPackage
+    ? selected?.apps?.find((app) => app.pkg === foregroundPackage)?.label ??
+      foregroundPackage
+    : null
+  const appUnlockConfigured =
+    !!foregroundPackage &&
+    (selected?.state?.appUnlockPackages ?? []).includes(foregroundPackage)
   const apps = selected?.apps ?? []
   const filteredApps = useMemo(() => {
     const query = appQuery.trim().toLowerCase()
@@ -1134,6 +1143,28 @@ export default function App() {
                           })
                         }
                         onClear={() => sendCmd(selected.id, 'clearDevicePin')}
+                      />
+                      <AppUnlockPanel
+                        key={selected.id}
+                        foregroundPackage={foregroundPackage}
+                        foregroundLabel={foregroundLabel}
+                        configured={appUnlockConfigured}
+                        deviceConfigured={selected.state?.devicePin === true}
+                        busy={busy || !selected.online}
+                        onSave={(secret) =>
+                          foregroundPackage &&
+                          sendCmd(selected.id, 'setAppUnlock', {
+                            package: foregroundPackage,
+                            secret
+                          })
+                        }
+                        onForget={() =>
+                          foregroundPackage &&
+                          sendCmd(selected.id, 'clearAppUnlock', {
+                            package: foregroundPackage
+                          })
+                        }
+                        onUnlock={() => sendCmd(selected.id, 'appUnlock')}
                       />
                       <section className="panel apps-panel">
                         <div className="panel-head apps-head">
@@ -1680,6 +1711,139 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
     default:
       return null
   }
+}
+
+function AppUnlockPanel({
+  foregroundPackage,
+  foregroundLabel,
+  configured,
+  deviceConfigured,
+  busy,
+  onSave,
+  onForget,
+  onUnlock
+}: {
+  foregroundPackage: string | null
+  foregroundLabel: string | null
+  configured: boolean
+  deviceConfigured: boolean
+  busy: boolean
+  onSave: (secret: string) => void
+  onForget: () => void
+  onUnlock: () => void
+}) {
+  const [secret, setSecret] = useState('')
+  const [reveal, setReveal] = useState(false)
+
+  useEffect(() => {
+    setSecret('')
+    setReveal(false)
+  }, [foregroundPackage])
+
+  const valid = secret.length >= 4 && secret.length <= 64
+  const systemPackage =
+    !foregroundPackage ||
+    foregroundPackage === 'com.android.systemui' ||
+    foregroundPackage === 'com.miui.home' ||
+    foregroundPackage.includes('launcher')
+  const canUnlock = (configured || deviceConfigured) && !busy
+
+  return (
+    <section className="panel pin-panel">
+      <div className="panel-head">
+        <div>
+          <h2>App unlock</h2>
+          <span className="panel-sub">
+            {foregroundPackage
+              ? systemPackage
+                ? 'Open a locked app first'
+                : `Foreground: ${foregroundLabel ?? foregroundPackage}`
+              : 'No foreground app'}
+          </span>
+        </div>
+        <span className={`pin-badge ${configured ? 'on' : ''}`}>
+          {configured ? 'App PIN' : deviceConfigured ? 'Device cred' : 'None'}
+        </span>
+      </div>
+      <div className="pin-body">
+        <p className="pin-copy">
+          Optional per-app credential. Leave it empty to use the device unlock
+          credential — MIUI/POCO App lock does this. The agent taps
+          Use password/PIN/pattern first, then enters the credential.
+        </p>
+        <div className="pin-row">
+          <input
+            className="input"
+            type={reveal ? 'text' : 'password'}
+            autoComplete="new-password"
+            maxLength={64}
+            value={secret}
+            disabled={systemPackage}
+            placeholder={
+              configured
+                ? 'Replace app credential…'
+                : 'App PIN, password, or pattern dots'
+            }
+            onChange={(event) =>
+              setSecret(event.target.value.slice(0, 64))
+            }
+          />
+          <button
+            className="btn btn-ghost btn-small"
+            type="button"
+            onClick={() => setReveal((value) => !value)}
+          >
+            {reveal ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        <div className="panel-actions pin-actions">
+          <button
+            className="btn btn-primary btn-small"
+            type="button"
+            disabled={busy || systemPackage || !valid}
+            onClick={() => {
+              onSave(secret)
+              setSecret('')
+              setReveal(false)
+            }}
+          >
+            Save
+          </button>
+          <button
+            className="btn btn-ghost btn-small"
+            type="button"
+            disabled={busy || !configured}
+            onClick={onForget}
+          >
+            Forget
+          </button>
+          <button
+            className="btn btn-secondary btn-small"
+            type="button"
+            disabled={!canUnlock}
+            onClick={onUnlock}
+          >
+            Unlock app
+          </button>
+        </div>
+        {foregroundPackage && !systemPackage && !configured && deviceConfigured && (
+          <p className="pin-copy">
+            Using the device unlock credential for this app.
+          </p>
+        )}
+        {!deviceConfigured && !configured && (
+          <p className="pin-hint">
+            Store a device unlock credential or a per-app credential first.
+          </p>
+        )}
+        {systemPackage && foregroundPackage && (
+          <p className="pin-hint">
+            Open the locked app on the device, then use this panel.
+          </p>
+        )}
+      </div>
+    </section>
+  )
 }
 
 function DevicePinPanel({

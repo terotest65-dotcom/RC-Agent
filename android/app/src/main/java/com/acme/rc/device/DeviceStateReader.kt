@@ -55,6 +55,7 @@ object DeviceStateReader {
             stayAwake = stayAwake,
             devicePin = DevicePin.isConfigured(context),
             pinFallback = DevicePin.allowCachedKeypad(context),
+            appUnlockPackages = AppUnlockStore.packages(context).toList(),
             androidSdk = Build.VERSION.SDK_INT,
             model = "${Build.MANUFACTURER} ${Build.MODEL}"
         )

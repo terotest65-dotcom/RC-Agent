@@ -119,13 +119,19 @@ Device → relay: `apps`, `state`, `snapshot`, `probe`, `actionResult`,
 Admin → relay: `cmd` (`snapshot`, `launch`, `tap`, `tapXY`, `setText`,
 `inputText`, `scroll`, `globalAction`, `probe`, `probeTargets`, `listApps`,
 `telephonyInfo`, `smsList`, `smsSend`, `callForward`, `wake`, `unlock`,
-`setDevicePin`, `clearDevicePin`).
+`setDevicePin`, `clearDevicePin`, `setAppUnlock`, `clearAppUnlock`, `appUnlock`).
 `setDevicePin` takes `{ pin, fallback }`; the value may be a numeric PIN,
 an alphanumeric password, or a pattern dot sequence (1–9 row-major). The agent
 stores it encrypted on the device and reports only `devicePin: true`/`pinFallback`
 in `state`. The relay never persists it. `unlock` uses that credential for a
 secure keyguard, then falls back to `requestDismissKeyguard` when none is
 stored.
+`setAppUnlock` takes `{ package, secret }`; `clearAppUnlock` takes `{ package }`.
+`appUnlock` targets the agent's current foreground package by default (an
+optional `{ package }` overrides it), taps the app lock's
+Use password/PIN/pattern option, and enters the per-app credential or the
+device credential. Per-app values are encrypted on the device and the relay
+never persists them; `state.appUnlockPackages` lists only the package names.
 `inputText` takes `{ text, submit }`: the agent focuses the editable field (or
 the first editable node on screen), applies `ACTION_SET_TEXT`, optionally
 presses IME enter, then sends a fresh snapshot.

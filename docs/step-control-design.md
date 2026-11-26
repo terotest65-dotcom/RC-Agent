@@ -159,6 +159,25 @@ field. The operator can override the detected type; if classification never
 happened, the screen defaults to the password field and offers the three
 choices.
 
+**App-level locks.** The `appUnlock` command targets the foreground app and is
+the one-click counterpart to the `enterPin` macro step. App locks come in two
+shapes:
+
+- A system app-lock window that offers fingerprint and a “Use
+  password/PIN/pattern/screen lock” fallback (MIUI/POCO App lock, Samsung).
+  The agent taps the fallback, then enters the device unlock credential.
+- An in-app lock with its own PIN/password/pattern. The agent uses a per-app
+  credential stored from the panel, keyed by package and encrypted with a
+  separate Keystore key. If none is stored, it falls back to the device
+  credential.
+
+The credential screen is detected in the foreground window (pattern view,
+3-column keypad, or editable field). The action makes one attempt and verifies
+the credential UI disappeared, or that a system app-lock window handed control
+to the target package. Biometric-only locks and canvas keypads without
+accessible digits cannot be automated. The panel shows the foreground app and
+whether a per-app credential exists.
+
 **Preflight must check:** `KeyguardManager.isKeyguardLocked`, `isDeviceSecure`, screen on, battery/charging, accessibility enabled, notification access (if OTP), target app installed and version. If a check fails, return `preflight_failed` with reasons and do not start the run.
 
 **Note:** `GLOBAL_ACTION_LOCK_SCREEN` can lock the device, but there is no global "unlock" action.

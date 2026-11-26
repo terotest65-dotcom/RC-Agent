@@ -36,6 +36,7 @@ export interface DeviceState {
   stayAwake: boolean
   devicePin?: boolean
   pinFallback?: boolean
+  appUnlockPackages?: string[]
   package?: string | null
 }
 
@@ -441,6 +442,9 @@ export type ActionName =
   | 'unlock'
   | 'setDevicePin'
   | 'clearDevicePin'
+  | 'setAppUnlock'
+  | 'clearAppUnlock'
+  | 'appUnlock'
   | 'launch'
   | 'tap'
   | 'tapXY'
