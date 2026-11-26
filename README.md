@@ -115,7 +115,9 @@ right-side activity drawer:
   screens use an `enterPin` step with a `secretRef`; it taps a labeled keypad
   or fills a text field without exposing the PIN in the run report. Add
   `appUnlock` after `launch` to handle an app-lock prompt; it is a no-op when
-  the app is already unlocked.
+  the app is already unlocked. A selector's `index` picks the Nth match
+  (1-based) and accepts a `{{param}}`, so a macro can choose the first or second
+  account from a list. Text matching ignores line breaks and repeated spaces.
 - **Recorder** — passive per-app recording: click **Record** on an app, then
   open that app on the device yourself. Leaving the app or pressing
   **Stop & save** saves the macro. Live text/tap/scroll feed, text-only

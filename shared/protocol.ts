@@ -206,6 +206,8 @@ export interface Selector {
   contains?: string
   desc?: string
   className?: string
+  /** Pick the Nth match in tree order, 1-based. Defaults to the first. */
+  index?: number | string
 }
 
 export type MacroOp =

@@ -87,7 +87,9 @@ data class Selector(
     val text: String? = null,
     val contains: String? = null,
     val desc: String? = null,
-    val className: String? = null
+    val className: String? = null,
+    /** Pick the Nth match in tree order, 1-based. Defaults to the first. */
+    val index: Int = 1
 )
 
 object TargetApps {

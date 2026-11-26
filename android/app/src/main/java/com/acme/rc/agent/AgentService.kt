@@ -1221,12 +1221,17 @@ class AgentService : Service() {
 
     private fun parseSelector(json: JSONObject?, params: JSONObject): Selector? {
         if (json == null) return null
+        val indexText = resolve(
+            json.optString("index").takeIf { it.isNotBlank() },
+            params
+        )
         val selector = Selector(
             viewId = json.optString("viewId").takeIf { it.isNotBlank() },
             text = resolve(json.optString("text").takeIf { it.isNotBlank() }, params),
             contains = resolve(json.optString("contains").takeIf { it.isNotBlank() }, params),
             desc = resolve(json.optString("desc").takeIf { it.isNotBlank() }, params),
-            className = json.optString("className").takeIf { it.isNotBlank() }
+            className = json.optString("className").takeIf { it.isNotBlank() },
+            index = indexText?.toIntOrNull()?.coerceAtLeast(1) ?: 1
         )
         return if (selector == Selector()) null else selector
     }

@@ -495,6 +495,16 @@ Every mutating step should have an `expect`. If it has none, the engine marks it
 
 Priority: `viewId` → `text`/`textContains`/`regex` → `contentDescription` → `hint` → relative position → bounds (last resort) → OCR (not in v1).
 
+A selector can be a combination of `viewId`, `text`, `contains`, `desc`, and `className`. Text matching collapses line breaks and repeated spaces, so a label rendered over two lines still matches its single-line form.
+
+`index` picks the Nth match in accessibility-tree order, **1-based**; the default is the first match. It is resolved through macro params, so a macro can tap the first or second bank without hard-coding a name:
+
+```json
+{ "op": "tap", "selector": { "contains": "Bank Account", "index": "{{bank}}" } }
+```
+
+Keep `index` selectors narrow (`contains` or `className` plus a distinctive label). Two matches mean the next one after an app update, so re-record after major app upgrades.
+
 **If/when own apps are added:** stable test tags are the biggest reliability lever. For Compose, `Modifier.testTag("login.submit")` plus `Modifier.semantics { testTagsAsResourceId = true }` exposes them as `viewIdResourceName`. For Views, set `android:id` or a test tag.
 
 **For v1's third-party apps:** there are no test tags. Rely on `viewId` where the app exposes one, then `text`/`contentDescription`, then bounds. Pin macros to `appVersionCode`; re-probe and dry-run after updates.

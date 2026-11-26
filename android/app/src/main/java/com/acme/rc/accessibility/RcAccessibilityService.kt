@@ -69,6 +69,8 @@ class RcAccessibilityService : AccessibilityService() {
         private const val ROW_DP = 48
         private const val MAX_SCREENSHOT_EDGE = 1280
 
+        private const val ROOT_FLAGS = AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID
+
         private val ENTER_LABELS = setOf(
             "enter", "ok", "okay", "done", "confirm", "check", "submit"
         )
@@ -212,7 +214,7 @@ class RcAccessibilityService : AccessibilityService() {
         val originalHeight = bitmap.height
         val scaled = downscale(bitmap, MAX_SCREENSHOT_EDGE)
         val root = try {
-            getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
+            getRootInActiveWindow(ROOT_FLAGS)
         } catch (_: Throwable) {
             null
         }
@@ -335,7 +337,7 @@ class RcAccessibilityService : AccessibilityService() {
 
     fun tapElement(element: Element): Boolean {
         val root = try {
-            getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
+            getRootInActiveWindow(ROOT_FLAGS)
         } catch (_: Throwable) {
             null
         }
@@ -367,7 +369,7 @@ class RcAccessibilityService : AccessibilityService() {
 
     fun setText(element: Element, text: String): Boolean {
         val root = try {
-            getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
+            getRootInActiveWindow(ROOT_FLAGS)
         } catch (_: Throwable) {
             null
         }
@@ -388,7 +390,7 @@ class RcAccessibilityService : AccessibilityService() {
 
     fun scroll(element: Element, forward: Boolean): Boolean {
         val root = try {
-            getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
+            getRootInActiveWindow(ROOT_FLAGS)
         } catch (_: Throwable) {
             null
         }
@@ -814,7 +816,22 @@ class RcAccessibilityService : AccessibilityService() {
         val scopedRoot = selector?.let { findNode(it) }
         if (selector != null && scopedRoot == null) return@withContext false
 
-        val keypad = scanKeypad(scopedRoot)
+        // A progress dialog often sits between the previous screen and the PIN
+        // entry. Wait briefly for the keypad or field to appear instead of
+        // failing on the first frame.
+        var keypad = scanKeypad(scopedRoot)
+        var field = findAppField()
+        val deadline = SystemClock.elapsedRealtime() + 8_000
+        while (
+            keypad.digits.size < 10 &&
+            field == null &&
+            SystemClock.elapsedRealtime() < deadline
+        ) {
+            delay(250)
+            keypad = scanKeypad(selector?.let { findNode(it) })
+            field = findAppField()
+        }
+
         if (secret.all { it.isDigit() } && keypad.digits.size >= 10) {
             for (digit in secret) {
                 val point = keypad.digits[digit] ?: return@withContext false
@@ -828,16 +845,16 @@ class RcAccessibilityService : AccessibilityService() {
             return@withContext true
         }
 
-        val field = findAppField() ?: return@withContext false
+        val targetField = field ?: return@withContext false
         val set = try {
-            field.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            targetField.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
             val arguments = Bundle().apply {
                 putCharSequence(
                     AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                     secret
                 )
             }
-            field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+            targetField.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
         } catch (_: Throwable) {
             false
         }
@@ -850,7 +867,7 @@ class RcAccessibilityService : AccessibilityService() {
                 tapAndAwait(enterButton.x, enterButton.y)
             } else {
                 try {
-                    field.performAction(
+                    targetField.performAction(
                         AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id
                     )
                 } catch (_: Throwable) {
@@ -1596,7 +1613,8 @@ class RcAccessibilityService : AccessibilityService() {
 
     fun findNode(selector: Selector): AccessibilityNodeInfo? {
         val root = activeRoot() ?: return null
-        return search(root, selector, 0)
+        val remaining = intArrayOf((selector.index - 1).coerceAtLeast(0))
+        return search(root, selector, 0, remaining)
     }
 
     fun tapSelector(selector: Selector): Boolean {
@@ -1697,7 +1715,7 @@ class RcAccessibilityService : AccessibilityService() {
     }
 
     private fun activeRoot(): AccessibilityNodeInfo? = try {
-        getRootInActiveWindow(AccessibilityNodeInfo.FLAG_PREFETCH_DESCENDANTS_HYBRID)
+        getRootInActiveWindow(ROOT_FLAGS)
     } catch (_: Throwable) {
         null
     }
@@ -1705,12 +1723,16 @@ class RcAccessibilityService : AccessibilityService() {
     private fun search(
         node: AccessibilityNodeInfo?,
         selector: Selector,
-        depth: Int
+        depth: Int,
+        remaining: IntArray
     ): AccessibilityNodeInfo? {
         if (node == null || depth > 60) return null
-        if (matches(node, selector)) return node
+        if (matches(node, selector)) {
+            if (remaining[0] == 0) return node
+            remaining[0]--
+        }
         for (i in 0 until node.childCount) {
-            search(node.getChild(i), selector, depth + 1)?.let { return it }
+            search(node.getChild(i), selector, depth + 1, remaining)?.let { return it }
         }
         return null
     }
@@ -1724,16 +1746,37 @@ class RcAccessibilityService : AccessibilityService() {
             node.viewIdResourceName != selector.viewId
         ) return false
         val text = node.text?.toString()
-        if (!selector.text.isNullOrBlank() && text != selector.text) return false
+        if (!selector.text.isNullOrBlank() &&
+            normalize(text) != normalize(selector.text)
+        ) return false
         if (!selector.contains.isNullOrBlank() &&
-            text?.contains(selector.contains) != true
+            !normalize(text).contains(normalize(selector.contains))
         ) return false
         val description = node.contentDescription?.toString()
-        if (!selector.desc.isNullOrBlank() && description != selector.desc) return false
+        if (!selector.desc.isNullOrBlank() &&
+            normalize(description) != normalize(selector.desc)
+        ) return false
         if (!selector.className.isNullOrBlank() &&
             node.className?.toString() != selector.className
         ) return false
         return true
+    }
+
+    /** Collapse line breaks and repeated spaces so multi-line labels still match. */
+    private fun normalize(value: String?): String {
+        if (value.isNullOrEmpty()) return ""
+        val out = StringBuilder(value.length)
+        var pendingSpace = false
+        for (ch in value) {
+            if (ch.isWhitespace()) {
+                pendingSpace = true
+                continue
+            }
+            if (pendingSpace && out.isNotEmpty()) out.append(' ')
+            pendingSpace = false
+            out.append(ch)
+        }
+        return out.toString()
     }
 
     private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
