@@ -78,7 +78,11 @@ class RcAccessibilityService : AccessibilityService() {
             "use password", "use pin", "use pattern", "use screen lock",
             "use device", "use passcode", "use lock screen", "unlock with",
             "enter password", "enter pin", "enter pattern", "enter screen lock",
-            "use backup", "switch to password", "switch to pin", "switch to pattern"
+            "use backup", "switch to password", "switch to pin", "switch to pattern",
+            "use your pin", "use your password", "use your pattern",
+            "enter your pin", "enter your password", "enter your pattern",
+            "verify with pin", "verify with password", "verify with pattern",
+            "verify with screen lock"
         )
     }
 
@@ -967,8 +971,9 @@ class RcAccessibilityService : AccessibilityService() {
             // biometric prompt with a "Use PIN/password/pattern" fallback.
             var fallback = findScreenLockOption()
             if (fallback == null && !isCredentialScreenPresent()) {
-                fallback = awaitScreenLockOption(2_000)
+                fallback = awaitScreenLockOption(2_500)
             }
+            var fallbackTapped = false
             if (fallback != null) {
                 if (!tapAndAwait(fallback.x, fallback.y)) {
                     return@withContext PinUnlockResult(
@@ -976,14 +981,23 @@ class RcAccessibilityService : AccessibilityService() {
                         "Could not open the Use password/PIN/pattern option."
                     )
                 }
-                delay(500)
+                fallbackTapped = true
+                // The system credential screen can appear after the biometric
+                // sheet animates out; poll instead of assuming it is immediate.
+                awaitCredentialScreen(2_500)
             }
 
-            if (!isCredentialScreenPresent()) {
+            if (!awaitCredentialScreen(1_000)) {
                 return@withContext PinUnlockResult(
                     false,
-                    "No app-lock credential screen is visible. If a biometric " +
-                        "prompt is showing, tap Use password on the device and retry."
+                    if (fallbackTapped) {
+                        "Tapped the Use password/PIN/pattern option, but no " +
+                            "credential field appeared. The screen may be a custom UI."
+                    } else {
+                        "No Use password/PIN/pattern option or credential field is " +
+                            "visible. If a biometric prompt is showing, tap Use " +
+                            "password on the device and retry."
+                    }
                 )
             }
 
@@ -1022,6 +1036,15 @@ class RcAccessibilityService : AccessibilityService() {
             delay(150)
         }
         return findScreenLockOption()
+    }
+
+    private suspend fun awaitCredentialScreen(timeoutMs: Long): Boolean {
+        val started = SystemClock.elapsedRealtime()
+        while (SystemClock.elapsedRealtime() - started < timeoutMs) {
+            if (isCredentialScreenPresent()) return true
+            delay(150)
+        }
+        return isCredentialScreenPresent()
     }
 
     private fun findClickableLabelContaining(

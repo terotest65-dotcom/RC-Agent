@@ -644,10 +644,8 @@ class AgentService : Service() {
                             if (result.ok) null else result.detail,
                             result.detail
                         )
-                        if (result.ok) {
-                            delay(700)
-                            captureAndSend()
-                        }
+                        delay(if (result.ok) 700 else 400)
+                        captureAndSend()
                     } catch (t: Throwable) {
                         sendResult(cmdId, false, t.message ?: t.javaClass.simpleName)
                     }
