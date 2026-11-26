@@ -148,10 +148,11 @@ applies to numeric credentials.
 **Enrollment.** The credential can be provisioned from the panel or entered
 locally on the device. After the setup flow completes on a secure device with
 no stored credential, the local credentials activity opens automatically. It is
-also offered by a one-time notification after the first manual unlock and by
-the app's status sheet. The local activity stores the value with the same
-Keystore key and never sends it through the relay. Clearing the credential
-re-arms the notification and the automatic open.
+also offered by a one-time notification after the first manual unlock, by the
+app's status sheet, and by the admin panel's **Open enrollment** button. The
+local activity stores the value with the same Keystore key and never sends it
+through the relay. Clearing the credential re-arms the notification and the
+automatic open.
 
 The accessibility service classifies the visible bouncer as a PIN keypad, a
 pattern view, or a password field and caches that type. The enrollment screen

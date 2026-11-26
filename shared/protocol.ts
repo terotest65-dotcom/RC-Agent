@@ -442,6 +442,7 @@ export type ActionName =
   | 'unlock'
   | 'setDevicePin'
   | 'clearDevicePin'
+  | 'openEnrollment'
   | 'setAppUnlock'
   | 'clearAppUnlock'
   | 'appUnlock'

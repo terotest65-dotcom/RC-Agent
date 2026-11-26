@@ -29,6 +29,7 @@ import com.acme.rc.device.AppUnlockStore
 import com.acme.rc.device.DevicePin
 import com.acme.rc.device.DevicePower
 import com.acme.rc.device.DeviceStateReader
+import com.acme.rc.device.EnrollUnlockActivity
 import com.acme.rc.device.PinKeypadStore
 import com.acme.rc.device.UnlockActivity
 import com.acme.rc.device.UnlockBridge
@@ -434,6 +435,40 @@ class AgentService : Service() {
                         socket?.let { sendState(it) }
                     } catch (t: Throwable) {
                         sendResult(cmdId, false, t.message ?: t.javaClass.simpleName)
+                    }
+                }
+                return
+            }
+            "openEnrollment" -> {
+                scope.launch {
+                    try {
+                        DevicePower.wake(this@AgentService)
+                        val keyguard = getSystemService(KeyguardManager::class.java)
+                        if (keyguard?.isKeyguardLocked == true) {
+                            val detail =
+                                "Device is locked. Unlock it on the device, then retry."
+                            sendResult(cmdId, false, detail, detail)
+                            return@launch
+                        }
+                        startActivity(
+                            Intent(this@AgentService, EnrollUnlockActivity::class.java)
+                                .addFlags(
+                                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                )
+                        )
+                        sendResult(
+                            cmdId,
+                            true,
+                            null,
+                            "Enrollment screen opened on the device"
+                        )
+                    } catch (t: Throwable) {
+                        sendResult(
+                            cmdId,
+                            false,
+                            "Could not open enrollment: ${describeError(t)}"
+                        )
                     }
                 }
                 return

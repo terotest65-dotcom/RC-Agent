@@ -1135,6 +1135,7 @@ export default function App() {
                         configured={selected.state?.devicePin === true}
                         fallback={selected.state?.pinFallback === true}
                         secureLock={selected.state?.secureLock === true}
+                        locked={selected.state?.locked === true}
                         busy={busy || !selected.online}
                         onSave={(pin, allowFallback) =>
                           sendCmd(selected.id, 'setDevicePin', {
@@ -1143,6 +1144,7 @@ export default function App() {
                           })
                         }
                         onClear={() => sendCmd(selected.id, 'clearDevicePin')}
+                        onEnroll={() => sendCmd(selected.id, 'openEnrollment')}
                       />
                       <AppUnlockPanel
                         key={selected.id}
@@ -1850,16 +1852,20 @@ function DevicePinPanel({
   configured,
   fallback,
   secureLock,
+  locked,
   busy,
   onSave,
-  onClear
+  onClear,
+  onEnroll
 }: {
   configured: boolean
   fallback: boolean
   secureLock: boolean
+  locked: boolean
   busy: boolean
   onSave: (secret: string, allowFallback: boolean) => void
   onClear: () => void
+  onEnroll: () => void
 }) {
   const [secret, setSecret] = useState('')
   const [reveal, setReveal] = useState(false)
@@ -1886,8 +1892,9 @@ function DevicePinPanel({
       </div>
       <div className="pin-body">
         <p className="pin-copy">
-          Used by <strong>Unlock</strong> for a PIN keypad, a password lock
-          screen, or a pattern. Pattern dots are entered 1–9 row-major (e.g.{' '}
+          Used by <strong>Unlock</strong> for a PIN, password, or pattern. For a
+          pattern, use <strong>Open enrollment</strong> to draw it on the
+          device, or enter the dot sequence 1–9 row-major (e.g.{' '}
           <span className="mono">1478</span>). Encrypted on the device; never
           sent back to the panel.
         </p>
@@ -1944,7 +1951,20 @@ function DevicePinPanel({
           >
             Forget
           </button>
+          <button
+            className="btn btn-secondary btn-small"
+            type="button"
+            disabled={busy}
+            onClick={onEnroll}
+          >
+            Open enrollment
+          </button>
         </div>
+        {locked && (
+          <p className="pin-hint">
+            Unlock the device on the device before opening enrollment.
+          </p>
+        )}
         {secureLock && !configured && (
           <p className="pin-hint">
             Secure lock is on. Without a stored PIN/password, someone must

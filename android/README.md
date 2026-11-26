@@ -140,12 +140,13 @@ device charging, and disable battery optimization.
   - **On-device enrollment:** after the setup flow completes (accessibility +
     permissions) on a secure device with no stored credential, the credentials
     page opens automatically. It also opens from the one-time notification
-    after the first manual unlock and from the status sheet's **Enroll** button.
+    after the first manual unlock, the status sheet's **Enroll** button, and the
+    panel's **Open enrollment** button (to replace a wrong credential).
     The screen detects the lock type and shows the matching input: a numeric
-    PIN field, a drag-to-draw 3×3 pattern pad, or a password field. The operator can override
-    the detected type. The credential is stored with the same Keystore key and
-    never sent through the relay. Clearing the credential re-arms the prompt
-    and the automatic open.
+    PIN field, a drag-to-draw 3×3 pattern pad, or a password field. The operator
+    can override the detected type. The credential is stored with the same
+    Keystore key and never sent through the relay. Clearing the credential
+    re-arms the prompt and the automatic open.
   - Without a stored credential, a PIN/pattern/password shows the normal lock
     screen; the person must enter it. Device Owner does not bypass a set
     credential: `setKeyguardDisabled` has no effect while one is configured.

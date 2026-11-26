@@ -93,11 +93,13 @@ right-side activity drawer:
   credential, a secure lock still has to be entered on the device.
 - **Device unlock enrollment** — after setup completes on a secure device with
   no stored credential, the credentials page opens automatically. It is also
-  available from the one-time notification after the first manual unlock and
-  from the app's status sheet. The screen detects the lock type and shows a
-  numeric PIN field, a drag-to-draw 3×3 pattern pad, or a password field (with a manual
-  override). The credential is stored with the Keystore key and never travels
-  through the relay. The same credential can also be entered from the panel.
+  available from the one-time notification after the first manual unlock, the
+  app's status sheet, and the panel's **Open enrollment** button (useful when
+  the wrong credential was saved). The screen detects the lock type and shows a
+  numeric PIN field, a drag-to-draw 3×3 pattern pad, or a password field (with a
+  manual override). The credential is stored with the Keystore key and never
+  travels through the relay. The same credential can also be entered from the
+  panel.
 - **App unlock** — targets the foreground app. It taps the device's
   “Use password/PIN/pattern/screen lock” option when an app lock offers
   biometrics, then enters a per-app credential if one is stored, otherwise the
