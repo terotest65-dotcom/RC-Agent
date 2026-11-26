@@ -51,6 +51,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -848,45 +849,113 @@ class RcAccessibilityService : AccessibilityService() {
     }
 
     private fun findPatternView(): Rect? {
+        var best: Rect? = null
+        var bestScore = Float.MIN_VALUE
         for (root in orderedWindowRoots()) {
-            findPatternViewIn(root, 0)?.let { return it }
+            collectPatternViews(root, 0) { node, bounds ->
+                val ratio = bounds.width().toFloat() / bounds.height().coerceAtLeast(1)
+                if (ratio in 0.55f..1.8f && bounds.width() > 240) {
+                    val strong =
+                        node.viewIdResourceName.orEmpty().endsWith("lockPatternView") ||
+                            node.className?.toString().orEmpty().contains("LockPatternView")
+                    val score =
+                        (if (strong) 3f else 0f) +
+                            (if (node.isClickable) 1.5f else 0f) +
+                            (1f - abs(1f - ratio))
+                    if (score > bestScore) {
+                        bestScore = score
+                        best = Rect(bounds)
+                    }
+                }
+            }
         }
-        return null
+        return best ?: findUnlabeledPatternView()
     }
 
-    private fun findPatternViewIn(node: AccessibilityNodeInfo?, depth: Int): Rect? {
-        if (node == null || depth > 60) return null
-        val viewId = node.viewIdResourceName.orEmpty()
-        val className = node.className?.toString().orEmpty()
-        val description = node.contentDescription?.toString().orEmpty()
-        val looksLikePattern =
-            viewId.endsWith("lockPatternView") ||
-                className.contains("LockPatternView") ||
-                (description.contains("pattern", ignoreCase = true) &&
-                    !description.contains("incorrect", ignoreCase = true))
+    /**
+     * OEM and Google confirmation screens sometimes expose the pattern canvas
+     * as an unlabeled, large, clickable square. Use that as a last resort.
+     */
+    private fun findUnlabeledPatternView(): Rect? {
+        var best: Rect? = null
+        var bestArea = 0
+        for (root in orderedWindowRoots()) {
+            collectLargeSquareViews(root, 0) { _, bounds ->
+                val ratio = bounds.width().toFloat() / bounds.height().coerceAtLeast(1)
+                if (ratio in 0.85f..1.15f && bounds.width() > 280) {
+                    val area = bounds.width() * bounds.height()
+                    if (area > bestArea) {
+                        bestArea = area
+                        best = Rect(bounds)
+                    }
+                }
+            }
+        }
+        return best
+    }
 
-        if (looksLikePattern) {
+    private fun collectLargeSquareViews(
+        node: AccessibilityNodeInfo?,
+        depth: Int,
+        onMatch: (AccessibilityNodeInfo, Rect) -> Unit
+    ) {
+        if (node == null || depth > 60) return
+        val className = node.className?.toString().orEmpty()
+        val isControl = className.contains("Button") ||
+            className.contains("TextView") ||
+            className.contains("EditText") ||
+            className.contains("Image")
+        if (node.isClickable && !isControl) {
             val bounds = Rect()
             try {
                 node.getBoundsInScreen(bounds)
             } catch (_: Throwable) {
                 // Stale node; keep looking.
             }
-            if (!bounds.isEmpty) {
-                val ratio = bounds.width().toFloat() / bounds.height().coerceAtLeast(1)
-                if (ratio in 0.8f..1.2f && bounds.width() > 240) return bounds
-            }
+            if (!bounds.isEmpty) onMatch(node, bounds)
         }
-
         for (i in 0 until node.childCount) {
             val child = try {
                 node.getChild(i)
             } catch (_: Throwable) {
                 null
             }
-            findPatternViewIn(child, depth + 1)?.let { return it }
+            collectLargeSquareViews(child, depth + 1, onMatch)
         }
-        return null
+    }
+
+    private fun collectPatternViews(
+        node: AccessibilityNodeInfo?,
+        depth: Int,
+        onMatch: (AccessibilityNodeInfo, Rect) -> Unit
+    ) {
+        if (node == null || depth > 60) return
+        val viewId = node.viewIdResourceName.orEmpty()
+        val className = node.className?.toString().orEmpty()
+        val description = node.contentDescription?.toString().orEmpty()
+        val matches =
+            viewId.endsWith("lockPatternView") ||
+                viewId.contains("pattern", ignoreCase = true) ||
+                className.contains("PatternView") ||
+                (description.contains("pattern", ignoreCase = true) &&
+                    !description.contains("incorrect", ignoreCase = true))
+        if (matches) {
+            val bounds = Rect()
+            try {
+                node.getBoundsInScreen(bounds)
+            } catch (_: Throwable) {
+                // Stale node; keep looking.
+            }
+            if (!bounds.isEmpty) onMatch(node, bounds)
+        }
+        for (i in 0 until node.childCount) {
+            val child = try {
+                node.getChild(i)
+            } catch (_: Throwable) {
+                null
+            }
+            collectPatternViews(child, depth + 1, onMatch)
+        }
     }
 
     /**
@@ -918,25 +987,33 @@ class RcAccessibilityService : AccessibilityService() {
 
     private suspend fun drawPattern(bounds: Rect, secret: String): Boolean {
         if (!DevicePin.isValidPattern(secret)) return false
-        val cellWidth = bounds.width() / 3f
-        val cellHeight = bounds.height() / 3f
+
+        // LockPatternView centers a square grid inside its bounds. Using the
+        // shorter edge also handles confirmation screens with extra padding.
+        val side = min(bounds.width(), bounds.height()).toFloat()
+        val left = bounds.left + (bounds.width() - side) / 2f
+        val top = bounds.top + (bounds.height() - side) / 2f
+        val cell = side / 3f
         val points = secret.map { digit ->
             val index = digit - '1'
             val row = index / 3
             val column = index % 3
             PointF(
-                bounds.left + (column + 0.5f) * cellWidth,
-                bounds.top + (row + 0.5f) * cellHeight
+                left + (column + 0.5f) * cell,
+                top + (row + 0.5f) * cell
             )
         }
-        val path = Path().apply {
-            moveTo(points.first().x, points.first().y)
-            for (point in points.drop(1)) lineTo(point.x, point.y)
+        val path = Path()
+        points.forEachIndexed { index, point ->
+            if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
+            // A small loop inside the dot gives the view extra samples at each
+            // dot, without leaving the touch target.
+            path.lineTo(point.x + 10f, point.y)
+            path.lineTo(point.x, point.y)
         }
 
-        // A one-second stroke gives the pattern view enough samples to register
-        // every dot without pausing and lifting the finger.
-        return gestureAndAwait(path, 1_000)
+        // A slower stroke is more reliable across OEM/confirm-credential views.
+        return gestureAndAwait(path, 1_200)
     }
 
     /**
@@ -985,6 +1062,8 @@ class RcAccessibilityService : AccessibilityService() {
                 // The system credential screen can appear after the biometric
                 // sheet animates out; poll instead of assuming it is immediate.
                 awaitCredentialScreen(2_500)
+                awaitFallbackGone(1_500)
+                delay(300)
             }
 
             if (!awaitCredentialScreen(1_000)) {
@@ -992,19 +1071,21 @@ class RcAccessibilityService : AccessibilityService() {
                     false,
                     if (fallbackTapped) {
                         "Tapped the Use password/PIN/pattern option, but no " +
-                            "credential field appeared. The screen may be a custom UI."
+                            "credential field appeared. Detected: ${describeAppLockUi()}"
                     } else {
                         "No Use password/PIN/pattern option or credential field is " +
                             "visible. If a biometric prompt is showing, tap Use " +
-                            "password on the device and retry."
+                            "password on the device and retry. Detected: " +
+                            describeAppLockUi()
                     }
                 )
             }
 
+            val ui = describeAppLockUi()
             if (!enterAppCredential(secret)) {
                 return@withContext PinUnlockResult(
                     false,
-                    "Could not enter the credential on the app-lock screen."
+                    "Could not enter the credential on the app-lock screen. Detected: $ui"
                 )
             }
 
@@ -1017,10 +1098,22 @@ class RcAccessibilityService : AccessibilityService() {
             }
             return@withContext PinUnlockResult(
                 false,
-                "The app-lock credential did not unlock the app. " +
-                    "Android may limit repeated attempts."
+                "The ${if (appSecret != null) "app" else "device"} credential did " +
+                    "not unlock the app. Detected: $ui"
             )
         }
+
+    private fun describeAppLockUi(): String {
+        val pattern = findPatternView()
+        val keypad = scanKeypad().digits.size
+        val field = findLockScreenField() ?: findAppField()
+        return buildString {
+            append("pkg=").append(currentPackage ?: "?")
+            append(", pattern=").append(pattern?.toShortString() ?: "none")
+            append(", keypadKeys=").append(keypad)
+            append(", field=").append(field?.className?.toString() ?: "none")
+        }
+    }
 
     private fun findScreenLockOption(): Point? {
         for (root in orderedWindowRoots()) {
@@ -1045,6 +1138,14 @@ class RcAccessibilityService : AccessibilityService() {
             delay(150)
         }
         return isCredentialScreenPresent()
+    }
+
+    private suspend fun awaitFallbackGone(timeoutMs: Long) {
+        val started = SystemClock.elapsedRealtime()
+        while (SystemClock.elapsedRealtime() - started < timeoutMs) {
+            if (findScreenLockOption() == null) return
+            delay(150)
+        }
     }
 
     private fun findClickableLabelContaining(
