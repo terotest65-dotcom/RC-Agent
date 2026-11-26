@@ -2436,6 +2436,19 @@ select:focus {
   line-height: 1.45;
 }
 
+.run-notice-toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 80;
+  width: min(420px, calc(100vw - 32px));
+}
+
+.run-notice-toast .phone-notice {
+  margin: 0;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
+}
+
 .phone-notice .status-dot {
   margin-top: 5px;
 }

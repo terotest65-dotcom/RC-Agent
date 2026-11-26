@@ -284,6 +284,7 @@ export interface RunRecord {
   finishedAt?: number
   steps: RunStep[]
   params?: Record<string, unknown>
+  error?: string | null
 }
 
 export interface RecordEvent {

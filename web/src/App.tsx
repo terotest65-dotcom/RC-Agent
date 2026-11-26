@@ -148,6 +148,10 @@ export default function App() {
   const [macroError, setMacroError] = useState<string | null>(null)
   const [runs, setRuns] = useState<RunRecord[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [runNotice, setRunNotice] = useState<{
+    ok: boolean
+    text: string
+  } | null>(null)
   const [recording, setRecording] = useState(false)
   const [recordEvents, setRecordEvents] = useState<RecordEvent[]>([])
 
@@ -436,6 +440,7 @@ export default function App() {
           break
         case 'error':
           setBusy(false)
+          setRunNotice({ ok: false, text: msg.message })
           appendLog(`server: ${msg.message}`)
           if (msg.message.includes('login required')) {
             setAuthed(false)
@@ -460,6 +465,7 @@ export default function App() {
           setSelectedRunId((prev) => prev ?? msg.runs[0]?.id ?? null)
           break
         case 'runStarted':
+          setRunNotice(null)
           setRuns((prev) => [
             msg.run,
             ...prev.filter((r) => r.id !== msg.run.id)
@@ -514,6 +520,7 @@ export default function App() {
           setSecrets(msg.secrets)
           break
         case 'secretSaved':
+          setRunNotice(null)
           appendLog(`secret saved: ${msg.secret.name}`)
           break
         case 'prompt':
@@ -686,6 +693,35 @@ export default function App() {
 
   const runMacro = (macro: Macro, params: Record<string, string>) => {
     if (!selected) return
+    if (!selected.online) {
+      setRunNotice({
+        ok: false,
+        text: 'Device is offline. Reconnect it, then run again.'
+      })
+      return
+    }
+
+    const known = new Set(secrets.flatMap((secret) => [secret.name, secret.id]))
+    const missing = Array.from(
+      new Set(
+        macro.steps
+          .map((step) => step.secretRef)
+          .filter((ref): ref is string => !!ref && !known.has(ref))
+      )
+    )
+    if (missing.length > 0) {
+      setRunNotice({
+        ok: false,
+        text: `Missing ${
+          missing.length > 1 ? 'secrets' : 'secret'
+        }: ${missing.join(', ')}. Add ${
+          missing.length > 1 ? 'them' : 'it'
+        } in Secrets, then run again.`
+      })
+      return
+    }
+
+    setRunNotice(null)
     setTab('runs')
     sendCmd(selected.id, 'runMacro', { macroId: macro.id, params }, false)
   }
@@ -969,6 +1005,15 @@ export default function App() {
             <button className="btn btn-ghost" onClick={() => setPrompt(null)}>
               Dismiss
             </button>
+          </div>
+        )}
+
+        {runNotice && (
+          <div className="run-notice-toast">
+            <NoticeBar
+              notice={runNotice}
+              onDismiss={() => setRunNotice(null)}
+            />
           </div>
         )}
 
@@ -3237,6 +3282,8 @@ function RunReport({ run }: { run: RunRecord }) {
         </div>
         <RunStatusBadge status={run.status} />
       </div>
+
+      {run.error && <p className="error run-error">{run.error}</p>}
 
       <div className="run-steps">
         {run.steps.map((step) => (

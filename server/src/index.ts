@@ -413,6 +413,32 @@ function recentRuns(): RunRecord[] {
     .slice(0, 20)
 }
 
+function failRun(
+  deviceId: string,
+  macroId: string,
+  macroName: string,
+  message: string,
+  params: Record<string, unknown>
+) {
+  const now = Date.now()
+  const run: RunRecord = {
+    id: randomUUID(),
+    macroId,
+    macroName,
+    deviceId,
+    status: 'failed',
+    startedAt: now,
+    finishedAt: now,
+    steps: [],
+    params,
+    error: message
+  }
+  runs.set(run.id, run)
+  broadcast({ t: 'runStarted', run })
+  broadcast({ t: 'runFinished', run })
+  log(`run rejected: ${message}`)
+}
+
 function send(ws: WsSocket, message: ServerMessage) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message))
 }
@@ -1029,9 +1055,20 @@ wss.on('connection', (ws, req) => {
         }
 
         if (msg.action === 'runMacro') {
+          const params =
+            msg.params && typeof msg.params === 'object' ? msg.params : {}
+
           const macro = macros.get(String(msg.macroId))
           if (!macro) {
-            fail(`unknown macro: ${msg.macroId}`)
+            const message = `unknown macro: ${msg.macroId}`
+            fail(message)
+            failRun(
+              target.id,
+              String(msg.macroId ?? ''),
+              'unknown macro',
+              message,
+              params
+            )
             return
           }
 
@@ -1051,13 +1088,13 @@ wss.on('connection', (ws, req) => {
               })
             }
           } catch (error) {
-            fail(error instanceof Error ? error.message : String(error))
+            const message = error instanceof Error ? error.message : String(error)
+            fail(message)
+            failRun(target.id, macro.id, macro.name, message, params)
             return
           }
 
           const runId = randomUUID()
-          const params =
-            msg.params && typeof msg.params === 'object' ? msg.params : {}
           const run: RunRecord = {
             id: runId,
             macroId: macro.id,
