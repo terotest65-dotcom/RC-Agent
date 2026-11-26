@@ -114,6 +114,173 @@ const admins = new Set<WsSocket>()
 const macros = new Map<string, Macro>()
 const runs = new Map<string, RunRecord>()
 const secrets = new Map<string, StoredSecret>()
+
+const BUILTIN_MACROS: Macro[] = [
+  {
+    id: 'sample-settings-network',
+    name: 'Settings — open Network & internet',
+    appPackage: 'com.android.settings',
+    steps: [
+      { op: 'launch', package: 'com.android.settings' },
+      {
+        op: 'waitFor',
+        selector: { text: 'Network & internet' },
+        timeoutMs: 8000
+      },
+      {
+        op: 'tap',
+        selector: { text: 'Network & internet' },
+        expect: { text: 'Internet' }
+      },
+      { op: 'screenshot', label: 'network' }
+    ]
+  },
+  {
+    id: 'builtin-phonepe-balance',
+    name: 'PhonePe — check first bank balance',
+    appPackage: 'com.phonepe.app',
+    params: {
+      bank: { type: 'number', required: true, default: 1 }
+    },
+    steps: [
+      { op: 'launch', package: 'com.phonepe.app' },
+      { op: 'waitForIdle' },
+      { op: 'appUnlock', package: 'com.phonepe.app' },
+      { op: 'tapIfExists', selector: { desc: 'Back' } },
+      { op: 'tapIfExists', selector: { text: 'Home' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Check Balance' },
+        timeoutMs: 15000
+      },
+      { op: 'tap', selector: { contains: 'Check Balance' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Bank Account' },
+        timeoutMs: 15000
+      },
+      {
+        op: 'tap',
+        selector: { contains: 'Bank Account', index: '{{bank}}' }
+      },
+      {
+        op: 'enterPin',
+        secretRef: 'phonepe-upi-pin',
+        submit: false
+      },
+      { op: 'sleep', ms: 2500 },
+      {
+        op: 'waitFor',
+        selector: { viewId: 'com.phonepe.app:id/rv_process_check_balance' },
+        timeoutMs: 20000
+      },
+      { op: 'screenshot', label: 'balance' },
+      { op: 'assert', selector: { contains: 'Balance' } },
+      {
+        op: 'scroll',
+        selector: { viewId: 'com.phonepe.app:id/rv_process_check_balance' },
+        dir: 'down'
+      },
+      {
+        op: 'scroll',
+        selector: { viewId: 'com.phonepe.app:id/rv_process_check_balance' },
+        dir: 'down'
+      },
+      { op: 'screenshot', label: 'balance-details' },
+      { op: 'tapIfExists', selector: { text: 'DONE' } }
+    ]
+  },
+  {
+    id: 'builtin-gpay-balance',
+    name: 'GPay — check first bank balance',
+    appPackage: 'com.google.android.apps.nbu.paisa.user',
+    params: {
+      bank: { type: 'number', required: true, default: 1 }
+    },
+    steps: [
+      { op: 'launch', package: 'com.google.android.apps.nbu.paisa.user' },
+      { op: 'waitForIdle' },
+      { op: 'appUnlock', package: 'com.google.android.apps.nbu.paisa.user' },
+      { op: 'tapIfExists', selector: { contains: 'Skip' } },
+      { op: 'tapIfExists', selector: { desc: 'Back' } },
+      { op: 'tapIfExists', selector: { text: 'Home' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Bank balance' },
+        timeoutMs: 15000
+      },
+      { op: 'tap', selector: { contains: 'Bank balance' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Check balance' },
+        timeoutMs: 15000
+      },
+      { op: 'tap', selector: { contains: 'Bank', index: '{{bank}}' } },
+      {
+        op: 'enterPin',
+        secretRef: 'gpay-upi-pin',
+        submit: false
+      },
+      {
+        op: 'waitFor',
+        selector: { contains: 'done', ignoreCase: true },
+        timeoutMs: 8000,
+        optional: true
+      },
+      { op: 'screenshot', label: 'balance' },
+      {
+        op: 'tapIfExists',
+        selector: { contains: 'done', ignoreCase: true }
+      }
+    ]
+  },
+  {
+    id: 'builtin-paytm-balance',
+    name: 'Paytm — check first bank balance',
+    appPackage: 'net.one97.paytm',
+    params: {
+      bank: { type: 'number', required: true, default: 1 }
+    },
+    steps: [
+      { op: 'launch', package: 'net.one97.paytm' },
+      { op: 'waitForIdle' },
+      { op: 'appUnlock', package: 'net.one97.paytm' },
+      { op: 'tapIfExists', selector: { contains: 'Skip' } },
+      { op: 'tapIfExists', selector: { desc: 'Back' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Balance & History' },
+        timeoutMs: 15000
+      },
+      { op: 'tap', selector: { contains: 'Balance & History' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Payment History' },
+        timeoutMs: 15000
+      },
+      {
+        op: 'tap',
+        selector: { contains: 'Check Balance', index: '{{bank}}' }
+      },
+      {
+        op: 'enterPin',
+        secretRef: 'paytm-upi-pin',
+        submit: true
+      },
+      {
+        op: 'waitFor',
+        selector: { contains: 'done', ignoreCase: true },
+        timeoutMs: 8000,
+        optional: true
+      },
+      { op: 'screenshot', label: 'balance' },
+      {
+        op: 'tapIfExists',
+        selector: { contains: 'done', ignoreCase: true }
+      }
+    ]
+  }
+]
 const recordingSessions = new Map<string, RecordingSession>()
 
 function log(...args: unknown[]) {
@@ -463,43 +630,47 @@ function sendRuns(ws: WsSocket) {
 // ---------------------------------------------------------------------
 
 function loadMacros() {
-  if (!existsSync(MACROS_FILE)) {
-    const sample: Macro = {
-      id: 'sample-settings-network',
-      name: 'Settings — open Network & internet',
-      appPackage: 'com.android.settings',
-      steps: [
-        { op: 'launch', package: 'com.android.settings' },
-        {
-          op: 'waitFor',
-          selector: { text: 'Network & internet' },
-          timeoutMs: 8000
-        },
-        {
-          op: 'tap',
-          selector: { text: 'Network & internet' },
-          expect: { text: 'Internet' }
-        },
-        { op: 'screenshot', label: 'network' }
-      ],
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+  let changed = false
+
+  if (existsSync(MACROS_FILE)) {
+    try {
+      const parsed = JSON.parse(readFileSync(MACROS_FILE, 'utf8')) as Macro[]
+      for (const macro of parsed) {
+        if (macro?.id && macro?.name && Array.isArray(macro.steps)) {
+          macros.set(macro.id, macro)
+        }
+      }
+    } catch (error) {
+      log('failed to load macros', error)
     }
-    macros.set(sample.id, sample)
-    saveMacros()
-    return
   }
 
-  try {
-    const parsed = JSON.parse(readFileSync(MACROS_FILE, 'utf8')) as Macro[]
-    for (const macro of parsed) {
-      if (macro?.id && macro?.name && Array.isArray(macro.steps)) {
-        macros.set(macro.id, macro)
-      }
+  // Seed built-in macros once. The marker keeps a deleted macro deleted after
+  // the next restart. Delete server/data/macros.seed to restore them.
+  const seedFile = join(DATA_DIR, 'macros.seed')
+  if (!existsSync(seedFile) || macros.size === 0) {
+    const now = Date.now()
+    for (const builtin of BUILTIN_MACROS) {
+      const exists = [...macros.values()].some(
+        (macro) => macro.id === builtin.id || macro.name === builtin.name
+      )
+      if (exists) continue
+      macros.set(builtin.id, {
+        ...builtin,
+        createdAt: builtin.createdAt ?? now,
+        updatedAt: builtin.updatedAt ?? now
+      })
+      changed = true
     }
-  } catch (error) {
-    log('failed to load macros', error)
+    try {
+      mkdirSync(DATA_DIR, { recursive: true })
+      writeFileSync(seedFile, `${new Date().toISOString()}\n`)
+    } catch (error) {
+      log('failed to write macro seed marker', error)
+    }
   }
+
+  if (changed) saveMacros()
 }
 
 function saveMacros() {
