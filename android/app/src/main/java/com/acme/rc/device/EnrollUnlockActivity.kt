@@ -1,6 +1,7 @@
 package com.acme.rc.device
 
 import android.app.Activity
+import android.graphics.Typeface
 import android.os.Bundle
 import android.text.InputType
 import android.text.method.PasswordTransformationMethod
@@ -11,7 +12,6 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import com.acme.rc.R
@@ -20,26 +20,27 @@ import com.acme.rc.agent.AgentService
 /**
  * Local, explicit enrollment screen for the device unlock credential.
  *
- * The input adapts to the credential type cached from the keyguard: a numeric
- * PIN field, a password field, or a 3x3 pattern pad. The operator can override
- * the detected type. This is deliberately not part of the WebView and never
- * sends the credential anywhere.
+ * The detected type is shown in the centre; the other types stay available as
+ * faint links at the bottom. The credential is stored with the same Keystore
+ * key as the panel flow and never leaves the device.
  */
 class EnrollUnlockActivity : Activity() {
 
-    private lateinit var typeGroup: RadioGroup
-    private lateinit var detectedHint: TextView
+    private lateinit var activeHint: TextView
+    private lateinit var typePin: TextView
+    private lateinit var typePattern: TextView
+    private lateinit var typePassword: TextView
     private lateinit var secretGroup: View
     private lateinit var patternGroup: View
     private lateinit var input: EditText
     private lateinit var show: CheckBox
     private lateinit var patternSequence: TextView
     private lateinit var patternPad: PatternPadView
+    private lateinit var saveButton: Button
     private lateinit var error: TextView
 
-    private var selectedType = LockType.PASSWORD
+    private var selectedType = LockType.UNKNOWN
     private var userSelectedType = false
-    private var applyingType = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,19 +49,24 @@ class EnrollUnlockActivity : Activity() {
             WindowManager.LayoutParams.FLAG_SECURE
         )
         setContentView(R.layout.activity_enroll_unlock)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN)
 
-        typeGroup = findViewById(R.id.enroll_type_group)
-        detectedHint = findViewById(R.id.enroll_detected_hint)
+        activeHint = findViewById(R.id.enroll_active_hint)
+        typePin = findViewById(R.id.enroll_type_pin)
+        typePattern = findViewById(R.id.enroll_type_pattern)
+        typePassword = findViewById(R.id.enroll_type_password)
         secretGroup = findViewById(R.id.enroll_secret_group)
         patternGroup = findViewById(R.id.enroll_pattern_group)
         input = findViewById(R.id.enroll_secret)
         show = findViewById(R.id.enroll_show)
         patternSequence = findViewById(R.id.enroll_pattern_sequence)
         patternPad = findViewById(R.id.enroll_pattern_pad)
+        saveButton = findViewById(R.id.enroll_save)
         error = findViewById(R.id.enroll_error)
 
-        val save = findViewById<Button>(R.id.enroll_save)
-        val cancel = findViewById<Button>(R.id.enroll_cancel)
+        typePin.setOnClickListener { chooseType(LockType.PIN) }
+        typePattern.setOnClickListener { chooseType(LockType.PATTERN) }
+        typePassword.setOnClickListener { chooseType(LockType.PASSWORD) }
 
         show.setOnCheckedChangeListener { _, checked ->
             input.transformationMethod = if (checked) {
@@ -71,13 +77,12 @@ class EnrollUnlockActivity : Activity() {
             input.setSelection(input.text.length)
         }
 
-        patternPad.onPatternChanged = { pattern -> updatePatternHint(pattern) }
-        findViewById<Button>(R.id.enroll_pattern_clear).setOnClickListener {
+        patternPad.onPatternChanged = { updatePatternHint(it) }
+        findViewById<TextView>(R.id.enroll_pattern_clear).setOnClickListener {
             patternPad.clear()
         }
 
-        save.setOnClickListener { save() }
-        cancel.setOnClickListener { finish() }
+        saveButton.setOnClickListener { save() }
         input.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
                 save()
@@ -87,87 +92,34 @@ class EnrollUnlockActivity : Activity() {
             }
         }
 
-        val detected = LockTypeDetector.detect(this)
-        val initial = if (detected == LockType.UNKNOWN) LockType.PASSWORD else detected
-        selectType(initial)
-        updateDetectedHint(detected)
-        findViewById<Button>(R.id.enroll_detect_type).setOnClickListener {
-            detectNow()
-        }
-
-        typeGroup.setOnCheckedChangeListener { _, checkedId ->
-            if (applyingType) return@setOnCheckedChangeListener
-            userSelectedType = true
-            when (checkedId) {
-                R.id.enroll_type_pin -> applyType(LockType.PIN)
-                R.id.enroll_type_pattern -> applyType(LockType.PATTERN)
-                R.id.enroll_type_password -> applyType(LockType.PASSWORD)
-            }
-        }
+        selectType(LockTypeDetector.detect(this))
     }
 
     override fun onResume() {
         super.onResume()
         if (userSelectedType) return
         val detected = LockTypeDetector.detect(this)
-        updateDetectedHint(detected)
         if (detected != LockType.UNKNOWN && detected != selectedType) {
             selectType(detected)
         }
     }
 
+    private fun chooseType(type: LockType) {
+        userSelectedType = true
+        if (type == selectedType && type != LockType.UNKNOWN) return
+        selectType(type)
+    }
+
     private fun selectType(type: LockType) {
         selectedType = type
-        applyingType = true
-        typeGroup.check(
-            when (type) {
-                LockType.PIN -> R.id.enroll_type_pin
-                LockType.PATTERN -> R.id.enroll_type_pattern
-                else -> R.id.enroll_type_password
-            }
-        )
-        applyingType = false
         applyType(type)
-    }
-
-    private fun updateDetectedHint(type: LockType) {
-        detectedHint.text = if (type == LockType.UNKNOWN) {
-            getString(R.string.enroll_unknown)
-        } else {
-            getString(R.string.enroll_detected, label(type))
-        }
-    }
-
-    private fun detectNow() {
-        userSelectedType = false
-        val detected = LockTypeDetector.detect(this)
-        updateDetectedHint(detected)
-        if (detected != LockType.UNKNOWN) {
-            if (detected != selectedType) selectType(detected)
-        } else {
-            Toast.makeText(this, R.string.enroll_detect_hint, Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun label(type: LockType): String = when (type) {
-        LockType.PIN -> getString(R.string.enroll_type_pin)
-        LockType.PATTERN -> getString(R.string.enroll_type_pattern)
-        LockType.PASSWORD -> getString(R.string.enroll_type_password)
-        LockType.UNKNOWN -> ""
+        updateTypeChips()
+        updateSaveState()
     }
 
     private fun applyType(type: LockType) {
-        selectedType = type
         error.visibility = View.GONE
         when (type) {
-            LockType.PATTERN -> {
-                secretGroup.visibility = View.GONE
-                patternGroup.visibility = View.VISIBLE
-                input.text.clear()
-                show.isChecked = false
-                hideKeyboard()
-                patternPad.clear()
-            }
             LockType.PIN -> {
                 secretGroup.visibility = View.VISIBLE
                 patternGroup.visibility = View.GONE
@@ -176,9 +128,9 @@ class EnrollUnlockActivity : Activity() {
                 input.hint = getString(R.string.enroll_pin_hint)
                 input.text.clear()
                 show.isChecked = false
-                input.requestFocus()
+                activeHint.text = getString(R.string.enroll_pin_prompt)
             }
-            LockType.PASSWORD, LockType.UNKNOWN -> {
+            LockType.PASSWORD -> {
                 secretGroup.visibility = View.VISIBLE
                 patternGroup.visibility = View.GONE
                 input.inputType = InputType.TYPE_CLASS_TEXT or
@@ -186,9 +138,53 @@ class EnrollUnlockActivity : Activity() {
                 input.hint = getString(R.string.enroll_password_hint)
                 input.text.clear()
                 show.isChecked = false
-                input.requestFocus()
+                activeHint.text = getString(R.string.enroll_password_prompt)
+            }
+            LockType.PATTERN -> {
+                secretGroup.visibility = View.GONE
+                patternGroup.visibility = View.VISIBLE
+                input.text.clear()
+                show.isChecked = false
+                hideKeyboard()
+                patternPad.clear()
+                activeHint.text = getString(R.string.enroll_pattern_prompt)
+                updatePatternHint("")
+            }
+            LockType.UNKNOWN -> {
+                secretGroup.visibility = View.GONE
+                patternGroup.visibility = View.GONE
+                input.text.clear()
+                show.isChecked = false
+                hideKeyboard()
+                activeHint.text = getString(R.string.enroll_choose_prompt)
             }
         }
+    }
+
+    private fun updateTypeChips() {
+        val chips = listOf(
+            typePin to LockType.PIN,
+            typePattern to LockType.PATTERN,
+            typePassword to LockType.PASSWORD
+        )
+        for ((view, type) in chips) {
+            val active = type == selectedType
+            view.setTextColor(
+                if (active) 0xFF2563EB.toInt() else 0xFF667085.toInt()
+            )
+            view.setTypeface(null, if (active) Typeface.BOLD else Typeface.NORMAL)
+            view.alpha = when {
+                selectedType == LockType.UNKNOWN -> 0.82f
+                active -> 1f
+                else -> 0.52f
+            }
+        }
+    }
+
+    private fun updateSaveState() {
+        val enabled = selectedType != LockType.UNKNOWN
+        saveButton.isEnabled = enabled
+        saveButton.alpha = if (enabled) 1f else 0.45f
     }
 
     private fun updatePatternHint(pattern: String) {
@@ -209,6 +205,7 @@ class EnrollUnlockActivity : Activity() {
     }
 
     private fun save() {
+        if (selectedType == LockType.UNKNOWN) return
         val secret = when (selectedType) {
             LockType.PATTERN -> patternPad.sequence
             else -> input.text.toString()
@@ -216,7 +213,8 @@ class EnrollUnlockActivity : Activity() {
         val valid = when (selectedType) {
             LockType.PIN -> secret.length in 4..16 && secret.all { it.isDigit() }
             LockType.PATTERN -> DevicePin.isValidPattern(secret)
-            LockType.PASSWORD, LockType.UNKNOWN -> DevicePin.isValid(secret)
+            LockType.PASSWORD -> DevicePin.isValid(secret)
+            LockType.UNKNOWN -> false
         }
         if (!valid) {
             error.text = when (selectedType) {
