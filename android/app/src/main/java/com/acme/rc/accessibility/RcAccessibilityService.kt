@@ -90,6 +90,8 @@ class RcAccessibilityService : AccessibilityService() {
     private val lastContentChange = AtomicLong(0)
     private var lastScreenshotAt = 0L
     private val lastLockTypeScan = AtomicLong(0)
+    private var lastPushedPackage: String? = null
+    private var lastStatePushAt = 0L
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val promptCheck = Runnable { maybePromptForUnlockEnrollment() }
@@ -157,7 +159,10 @@ class RcAccessibilityService : AccessibilityService() {
             lastContentChange.set(SystemClock.elapsedRealtime())
         }
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            event.packageName?.toString()?.let { currentPackage = it }
+            event.packageName?.toString()?.let { pkg ->
+                currentPackage = pkg
+                pushStateIfPackageChanged(pkg)
+            }
             event.className?.toString()?.let { currentActivity = it }
         }
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
@@ -608,6 +613,24 @@ class RcAccessibilityService : AccessibilityService() {
             false,
             "PIN entry did not unlock the device. Android limits repeated attempts."
         )
+    }
+
+    /**
+     * The admin panel's App unlock section targets the foreground app. Push a
+     * state update when the foreground package changes so its Save/Unlock
+     * controls do not stay stuck on the previous app for up to ten seconds.
+     */
+    private fun pushStateIfPackageChanged(pkg: String) {
+        if (pkg == lastPushedPackage) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastStatePushAt < 1_000) return
+        lastPushedPackage = pkg
+        lastStatePushAt = now
+        try {
+            AgentService.instance?.refreshState()
+        } catch (_: Throwable) {
+            // The relay service may not be connected yet.
+        }
     }
 
     /**

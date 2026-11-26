@@ -418,7 +418,7 @@ class AgentService : Service() {
                         sendResult(
                             cmdId,
                             false,
-                            "Could not store the PIN: ${t.message ?: t.javaClass.simpleName}"
+                            "Could not store the PIN: ${describeError(t)}"
                         )
                     }
                 }
@@ -464,8 +464,7 @@ class AgentService : Service() {
                         sendResult(
                             cmdId,
                             false,
-                            "Could not store the app credential: " +
-                                (t.message ?: t.javaClass.simpleName)
+                            "Could not store the app credential: ${describeError(t)}"
                         )
                     }
                 }
@@ -814,6 +813,24 @@ class AgentService : Service() {
         if (error != null) json.put("error", error)
         if (detail != null) json.put("detail", detail)
         socket?.send(json.toString())
+    }
+
+    private fun describeError(t: Throwable): String {
+        val parts = mutableListOf<String>()
+        var current: Throwable? = t
+        var depth = 0
+        while (current != null && depth < 4) {
+            current.javaClass.simpleName
+                .takeIf { it.isNotBlank() && it !in parts }
+                ?.let { parts += it }
+            current.message
+                ?.trim()
+                ?.takeIf { it.isNotBlank() && it !in parts }
+                ?.let { parts += it }
+            current = current.cause
+            depth++
+        }
+        return if (parts.isEmpty()) "unknown error" else parts.joinToString(": ")
     }
 
     private fun sendProfile() {

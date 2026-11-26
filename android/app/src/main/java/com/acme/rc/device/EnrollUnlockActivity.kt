@@ -220,9 +220,26 @@ class EnrollUnlockActivity : Activity() {
             Toast.makeText(this, R.string.enroll_saved, Toast.LENGTH_SHORT).show()
             finish()
         } catch (t: Throwable) {
-            error.text = getString(R.string.enroll_failed) + " " +
-                (t.message ?: t.javaClass.simpleName)
+            error.text = getString(R.string.enroll_failed) + " " + describeError(t)
             error.visibility = View.VISIBLE
         }
+    }
+
+    private fun describeError(t: Throwable): String {
+        val parts = mutableListOf<String>()
+        var current: Throwable? = t
+        var depth = 0
+        while (current != null && depth < 4) {
+            current.javaClass.simpleName
+                .takeIf { it.isNotBlank() && it !in parts }
+                ?.let { parts += it }
+            current.message
+                ?.trim()
+                ?.takeIf { it.isNotBlank() && it !in parts }
+                ?.let { parts += it }
+            current = current.cause
+            depth++
+        }
+        return if (parts.isEmpty()) "unknown error" else parts.joinToString(": ")
     }
 }

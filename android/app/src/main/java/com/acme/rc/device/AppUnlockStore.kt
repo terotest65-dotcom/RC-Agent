@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -26,6 +27,7 @@ object AppUnlockStore {
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
     private const val GCM_TAG_BITS = 128
     private const val PREFIX = "pkg:"
+    private const val TAG = "AppUnlockStore"
 
     fun isValid(secret: String): Boolean = DevicePin.isValid(secret)
 
@@ -43,11 +45,21 @@ object AppUnlockStore {
     fun save(context: Context, packageName: String, secret: String) {
         require(packageName.isNotBlank()) { "package is required" }
         require(isValid(secret)) { "Credential must be ${DevicePin.MIN_LENGTH}–${DevicePin.MAX_LENGTH} characters" }
+        val (iv, ciphertext) = try {
+            encrypt(secret)
+        } catch (t: Throwable) {
+            Log.w(TAG, "encrypt failed; resetting the app-unlock Keystore key", t)
+            deleteKey()
+            encrypt(secret)
+        }
+        val blob = "${b64(iv)}:${b64(ciphertext)}"
+        prefs(context).edit().putString(PREFIX + packageName, blob).apply()
+    }
+
+    private fun encrypt(secret: String): Pair<ByteArray, ByteArray> {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
-        val ciphertext = cipher.doFinal(secret.toByteArray(Charsets.UTF_8))
-        val blob = "${b64(cipher.iv)}:${b64(ciphertext)}"
-        prefs(context).edit().putString(PREFIX + packageName, blob).apply()
+        return cipher.iv to cipher.doFinal(secret.toByteArray(Charsets.UTF_8))
     }
 
     @Synchronized
@@ -78,9 +90,24 @@ object AppUnlockStore {
 
     private fun key(): SecretKey {
         val store = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-        (store.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let {
-            return it.secretKey
+        try {
+            val entry = store.getEntry(KEY_ALIAS, null)
+            if (entry is KeyStore.SecretKeyEntry) return entry.secretKey
+            if (entry != null) store.deleteEntry(KEY_ALIAS)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Keystore entry is unreadable; deleting it", t)
+            try {
+                store.deleteEntry(KEY_ALIAS)
+            } catch (_: Throwable) {
+                // The store itself may be unavailable.
+            }
         }
+        return generateKey(256)
+            ?: generateKey(128)
+            ?: throw IllegalStateException("Could not create an AES Keystore key")
+    }
+
+    private fun generateKey(size: Int): SecretKey? = try {
         val generator = KeyGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_AES,
             KEYSTORE
@@ -92,10 +119,23 @@ object AppUnlockStore {
             )
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
+                .setKeySize(size)
+                .setUserAuthenticationRequired(false)
                 .build()
         )
-        return generator.generateKey()
+        generator.generateKey()
+    } catch (t: Throwable) {
+        Log.w(TAG, "AES-$size Keystore key generation failed", t)
+        null
+    }
+
+    private fun deleteKey() {
+        try {
+            val store = KeyStore.getInstance(KEYSTORE).apply { load(null) }
+            if (store.containsAlias(KEY_ALIAS)) store.deleteEntry(KEY_ALIAS)
+        } catch (_: Throwable) {
+            // Nothing else to reset.
+        }
     }
 
     private fun b64(bytes: ByteArray): String =
