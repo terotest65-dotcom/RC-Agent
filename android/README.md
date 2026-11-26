@@ -137,13 +137,15 @@ device charging, and disable battery optimization.
       stored as their dot numbers 1–9 in row-major order (e.g. `1478`).
     - The credential is encrypted with an Android Keystore key and is never
       returned to the panel or stored by the relay.
-  - **On-device enrollment:** after the first manual unlock of a secure device
-    with no stored credential, the agent posts a one-time notification. It
-    opens a local screen that detects the lock type and shows the matching
-    input: a numeric PIN field, a 3×3 pattern pad, or a password field. The
-    operator can override the detected type. The credential is stored with the
-    same Keystore key and never sent through the relay. The status sheet also
-    has an **Enroll** button; clearing the credential re-arms the prompt.
+  - **On-device enrollment:** after the setup flow completes (accessibility +
+    permissions) on a secure device with no stored credential, the credentials
+    page opens automatically. It also opens from the one-time notification
+    after the first manual unlock and from the status sheet's **Enroll** button.
+    The screen detects the lock type and shows the matching input: a numeric
+    PIN field, a 3×3 pattern pad, or a password field. The operator can override
+    the detected type. The credential is stored with the same Keystore key and
+    never sent through the relay. Clearing the credential re-arms the prompt
+    and the automatic open.
   - Without a stored credential, a PIN/pattern/password shows the normal lock
     screen; the person must enter it. Device Owner does not bypass a set
     credential: `setKeyguardDisabled` has no effect while one is configured.

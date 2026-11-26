@@ -23,6 +23,7 @@ object UnlockEnrollment {
 
     private const val PREFS = "rc_unlock_enroll"
     private const val KEY_PROMPTED = "prompted"
+    private const val KEY_AUTO_OPENED = "auto_opened"
 
     fun shouldPrompt(context: Context): Boolean =
         !prefs(context).getBoolean(KEY_PROMPTED, false) &&
@@ -32,8 +33,17 @@ object UnlockEnrollment {
         prefs(context).edit().putBoolean(KEY_PROMPTED, true).apply()
     }
 
+    /** Auto-open once after setup; manual/local entry points remain available. */
+    fun shouldAutoOpen(context: Context): Boolean =
+        !prefs(context).getBoolean(KEY_AUTO_OPENED, false) &&
+            !DevicePin.isConfigured(context)
+
+    fun markAutoOpened(context: Context) {
+        prefs(context).edit().putBoolean(KEY_AUTO_OPENED, true).apply()
+    }
+
     fun reset(context: Context) {
-        prefs(context).edit().remove(KEY_PROMPTED).apply()
+        prefs(context).edit().clear().apply()
         cancel(context)
     }
 

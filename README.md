@@ -91,13 +91,13 @@ right-side activity drawer:
   are filled with set-text, and patterns are traced through the 3×3 dots. Device
   Owner only disables a keyguard that has no credential set. Without a stored
   credential, a secure lock still has to be entered on the device.
-- **Device unlock enrollment** — after the first manual unlock of a secure
-  device, the agent offers a one-time notification to save the PIN, password,
-  or pattern. The enrollment screen detects the lock type and shows a numeric
-  PIN field, a 3×3 pattern pad, or a password field (with a manual override).
-  The credential is stored with the Keystore key and never travels through the
-  relay. The same credential can also be entered from the panel, and the app's
-  status sheet has an **Enroll** button.
+- **Device unlock enrollment** — after setup completes on a secure device with
+  no stored credential, the credentials page opens automatically. It is also
+  available from the one-time notification after the first manual unlock and
+  from the app's status sheet. The screen detects the lock type and shows a
+  numeric PIN field, a 3×3 pattern pad, or a password field (with a manual
+  override). The credential is stored with the Keystore key and never travels
+  through the relay. The same credential can also be entered from the panel.
 - **App unlock** — targets the foreground app. It taps the device's
   “Use password/PIN/pattern/screen lock” option when an app lock offers
   biometrics, then enters a per-app credential if one is stored, otherwise the

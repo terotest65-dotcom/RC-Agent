@@ -3,6 +3,7 @@ package com.acme.rc
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.KeyguardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -22,8 +23,10 @@ import androidx.core.view.WindowCompat
 import com.acme.rc.agent.AgentConfig
 import com.acme.rc.agent.AgentConnection
 import com.acme.rc.agent.AgentService
+import com.acme.rc.device.DevicePin
 import com.acme.rc.device.DeviceStateReader
 import com.acme.rc.device.EnrollUnlockActivity
+import com.acme.rc.device.UnlockEnrollment
 import org.json.JSONObject
 
 /**
@@ -93,7 +96,11 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         refreshWeb()
-        if (setupStage != SetupStage.DONE) advanceSetup()
+        if (setupStage != SetupStage.DONE) {
+            advanceSetup()
+        } else {
+            maybeOpenEnrollment()
+        }
     }
 
     override fun onPause() {
@@ -171,6 +178,31 @@ class MainActivity : Activity() {
         dismissAccessibilityDialog()
         startAgentService()
         refreshWeb()
+        maybeOpenEnrollment()
+    }
+
+    /**
+     * Once accessibility and the permission prompt are done, open the local
+     * credential page if the device has a secure lock and nothing is stored.
+     * The one-time flag keeps it from reopening on every launch; clearing the
+     * credential re-arms it.
+     */
+    private fun maybeOpenEnrollment() {
+        if (setupStage != SetupStage.DONE) return
+        if (!DeviceStateReader.isAccessibilityEnabled(this)) return
+        val keyguard = getSystemService(KeyguardManager::class.java) ?: return
+        if (!keyguard.isDeviceSecure) return
+        if (DevicePin.isConfigured(this)) return
+        if (!UnlockEnrollment.shouldAutoOpen(this)) return
+
+        UnlockEnrollment.markAutoOpened(this)
+        setupHandler.post {
+            try {
+                startActivity(Intent(this, EnrollUnlockActivity::class.java))
+            } catch (_: Throwable) {
+                // The status sheet still offers Enroll.
+            }
+        }
     }
 
     private fun showAccessibilityDialog() {
