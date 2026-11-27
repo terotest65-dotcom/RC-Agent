@@ -483,6 +483,10 @@ of those words, then a bottom-right check target on the PIN screen. If none is
 found, the step fails with `PIN entered, but no submit/check button was found`
 instead of silently leaving the PIN unsubmitted.
 
+Set `"requireActivity": "GetCredential"` on `enterPin` when a payment opens the
+NPCI screen after an amount page. The step waits for that activity before typing,
+so the PIN cannot be entered into the previous screen.
+
 App-lock prompts are handled inside the macro before navigation:
 
 ```json

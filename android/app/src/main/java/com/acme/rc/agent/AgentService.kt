@@ -956,7 +956,8 @@ class AgentService : Service() {
         val secretRef: String?,
         val secret: Boolean,
         val submit: Boolean,
-        val pinMethod: String
+        val pinMethod: String,
+        val requireActivity: String?
     )
 
     private data class StepResult(
@@ -1126,7 +1127,8 @@ class AgentService : Service() {
                     secret,
                     step.selector,
                     step.submit,
-                    step.pinMethod
+                    step.pinMethod,
+                    requireActivity = step.requireActivity
                 )
                 if (!pinResult.ok) {
                     return StepResult("failed", pinResult.detail)
@@ -1150,7 +1152,8 @@ class AgentService : Service() {
                     step.selector,
                     submit = false,
                     pinMethod = step.pinMethod,
-                    purpose = "Amount"
+                    purpose = "Amount",
+                    requireActivity = step.requireActivity
                 )
                 if (!result.ok) {
                     return StepResult("failed", result.detail)
@@ -1262,7 +1265,11 @@ class AgentService : Service() {
             secretRef = obj.optString("secretRef").takeIf { it.isNotBlank() },
             secret = obj.optBoolean("secret", false),
             submit = obj.optBoolean("submit", true),
-            pinMethod = obj.optString("pinMethod", "gesture")
+            pinMethod = obj.optString("pinMethod", "gesture"),
+            requireActivity = resolve(
+                obj.optString("requireActivity").takeIf { it.isNotBlank() },
+                params
+            )
         )
     }
 

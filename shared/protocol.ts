@@ -250,6 +250,7 @@ export interface MacroStep {
   secret?: boolean
   submit?: boolean
   pinMethod?: 'gesture' | 'click'
+  requireActivity?: string
 }
 
 export interface MacroParam {

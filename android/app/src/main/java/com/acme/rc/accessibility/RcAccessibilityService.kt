@@ -820,11 +820,31 @@ class RcAccessibilityService : AccessibilityService() {
         selector: Selector? = null,
         submit: Boolean = true,
         pinMethod: String = "gesture",
-        purpose: String = "PIN"
+        purpose: String = "PIN",
+        requireActivity: String? = null
     ): PinUnlockResult = withContext(Dispatchers.Default) {
         if (secret.isBlank()) {
             return@withContext PinUnlockResult(false, "No $purpose value was provided")
         }
+
+        if (!requireActivity.isNullOrBlank()) {
+            val activityDeadline = SystemClock.elapsedRealtime() + 10_000
+            while (SystemClock.elapsedRealtime() < activityDeadline &&
+                currentActivity?.contains(requireActivity, ignoreCase = true) != true
+            ) {
+                delay(200)
+            }
+            if (currentActivity?.contains(requireActivity, ignoreCase = true) != true) {
+                return@withContext PinUnlockResult(
+                    false,
+                    "$purpose screen not open: expected $requireActivity, current " +
+                        (currentActivity ?: "unknown")
+                )
+            }
+        }
+
+        // Let the PIN window finish its transition and take focus.
+        delay(500)
 
         val scopedRoot = selector?.let { findNode(it) }
         if (selector != null && scopedRoot == null) {
@@ -868,6 +888,14 @@ class RcAccessibilityService : AccessibilityService() {
             val gridNote = keypad.grid?.let {
                 "grid [${it.left},${it.top}][${it.right},${it.bottom}]"
             } ?: "grid unknown"
+            findAppField()?.let { focusField ->
+                try {
+                    focusField.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                } catch (_: Throwable) {
+                    // The keypad can still receive the taps.
+                }
+            }
+            delay(400)
             val startLength = pinFieldLength()
             for ((index, digit) in secret.withIndex()) {
                 val point = keypad.digits[digit]
@@ -891,9 +919,18 @@ class RcAccessibilityService : AccessibilityService() {
                         "Keypad tap failed at digit ${index + 1} on $source"
                     )
                 }
-                delay(120)
+                delay(200)
             }
             val endLength = pinFieldLength()
+            if (startLength != null && endLength != null &&
+                endLength - startLength != secret.length
+            ) {
+                return@withContext PinUnlockResult(
+                    false,
+                    "$purpose field shows ${endLength - startLength} of " +
+                        "${secret.length} digits on $source"
+                )
+            }
             if (submit) {
                 delay(200)
                 val (screenW, screenH) = displaySize()

@@ -41,7 +41,7 @@ const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
-const BUILTIN_VERSION = 9
+const BUILTIN_VERSION = 10
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -169,7 +169,8 @@ const BUILTIN_MACROS: Macro[] = [
         op: 'enterPin',
         secretRef: 'phonepe-upi-pin',
         submit: true,
-        pinMethod: 'click'
+        pinMethod: 'click',
+        requireActivity: 'GetCredential'
       },
       { op: 'sleep', ms: 2500 },
       {
@@ -257,7 +258,8 @@ const BUILTIN_MACROS: Macro[] = [
         op: 'enterPin',
         secretRef: 'phonepe-upi-pin',
         submit: true,
-        pinMethod: 'click'
+        pinMethod: 'click',
+        requireActivity: 'GetCredential'
       },
       {
         op: 'waitFor',
@@ -369,7 +371,8 @@ const BUILTIN_MACROS: Macro[] = [
       {
         op: 'enterPin',
         secretRef: 'paytm-upi-pin',
-        submit: true
+        submit: true,
+        requireActivity: 'GetCredential'
       },
       {
         op: 'waitFor',
@@ -454,7 +457,8 @@ const BUILTIN_MACROS: Macro[] = [
       {
         op: 'enterPin',
         secretRef: 'paytm-upi-pin',
-        submit: true
+        submit: true,
+        requireActivity: 'GetCredential'
       },
       {
         op: 'waitFor',
