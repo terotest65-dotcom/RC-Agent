@@ -1539,14 +1539,18 @@ class RcAccessibilityService : AccessibilityService() {
         // A password bouncer's QWERTY row (or a numeric IME) can expose
         // ten "digit" nodes. Only accept a real 3-column keypad.
         if (digits.size < 10 || !looksLikeKeypad(digits)) return null
-        val grid = if (digitBounds.isEmpty()) {
+        // Prefer the clickable key bounds: on some PIN pads the digit label
+        // nodes are virtual and sit outside the real keypad rectangle.
+        val keyBounds = keyNodes.values.mapNotNull { nodeBounds(it) }
+        val gridSource = if (keyBounds.isNotEmpty()) keyBounds else digitBounds
+        val grid = if (gridSource.isEmpty()) {
             null
         } else {
             Rect(
-                digitBounds.minOf { it.left },
-                digitBounds.minOf { it.top },
-                digitBounds.maxOf { it.right },
-                digitBounds.maxOf { it.bottom }
+                gridSource.minOf { it.left },
+                gridSource.minOf { it.top },
+                gridSource.maxOf { it.right },
+                gridSource.maxOf { it.bottom }
             )
         }
         return KeypadScan(
