@@ -78,7 +78,7 @@ class RcAccessibilityService : AccessibilityService() {
         )
         private val ENTER_TERMS = listOf(
             "submit", "verify", "proceed", "continue", "confirm",
-            "authorize", "approve", "next"
+            "authorize", "approve", "next", "forward", "arrow"
         )
         private val PIN_SWITCH_LABELS = setOf(
             "pin", "use pin", "enter pin", "use pin instead", "use your pin"
@@ -117,7 +117,7 @@ class RcAccessibilityService : AccessibilityService() {
         RegexOption.IGNORE_CASE
     )
     private val keypadEnterId = Regex(
-        "(?:enter|ok|okay|done|confirm|check|submit|verify|proceed|continue|next)$",
+        "(?:enter|ok|okay|done|confirm|check|submit|verify|proceed|continue|next|forward|arrow)",
         RegexOption.IGNORE_CASE
     )
 
@@ -1652,10 +1652,14 @@ class RcAccessibilityService : AccessibilityService() {
     private fun findEnterButton(): Point? {
         val active = activeRoot()
         if (active != null) {
-            findEnterIn(active, 0, allowContains = true)?.let { return it }
+            findEnterIn(active, 0, allowContains = true, allowId = true)?.let {
+                return it
+            }
         }
         for (root in orderedWindowRoots()) {
-            findEnterIn(root, 0, allowContains = false)?.let { return it }
+            findEnterIn(root, 0, allowContains = false, allowId = false)?.let {
+                return it
+            }
         }
         return null
     }
@@ -1663,7 +1667,8 @@ class RcAccessibilityService : AccessibilityService() {
     private fun findEnterIn(
         node: AccessibilityNodeInfo?,
         depth: Int,
-        allowContains: Boolean
+        allowContains: Boolean,
+        allowId: Boolean
     ): Point? {
         if (node == null || depth > 60) return null
         val label = (node.text?.toString() ?: node.contentDescription?.toString())
@@ -1674,7 +1679,7 @@ class RcAccessibilityService : AccessibilityService() {
                 (allowContains && ENTER_TERMS.any { label.contains(it) })
             )
         val viewId = node.viewIdResourceName
-        val byId = viewId != null && keypadEnterId.containsMatchIn(viewId)
+        val byId = allowId && viewId != null && keypadEnterId.containsMatchIn(viewId)
         if (byLabel || byId) {
             clickableBounds(node, requireClickable = true)?.let {
                 return Point(it.centerX(), it.centerY())
@@ -1686,7 +1691,7 @@ class RcAccessibilityService : AccessibilityService() {
             } catch (_: Throwable) {
                 null
             }
-            findEnterIn(child, depth + 1, allowContains)?.let { return it }
+            findEnterIn(child, depth + 1, allowContains, allowId)?.let { return it }
         }
         return null
     }
@@ -1701,7 +1706,10 @@ class RcAccessibilityService : AccessibilityService() {
         val (width, height) = displaySize()
         val minSize = (32 * resources.displayMetrics.density).toInt()
         var best: Rect? = null
+        val seen = mutableSetOf<String>()
         collectBottomRight(root, 0, width, height, minSize) { rect ->
+            val key = "${rect.left},${rect.top},${rect.right},${rect.bottom}"
+            if (!seen.add(key)) return@collectBottomRight
             val current = best
             if (current == null || rect.bottom > current.bottom ||
                 (rect.bottom == current.bottom && rect.right > current.right)
@@ -1721,23 +1729,18 @@ class RcAccessibilityService : AccessibilityService() {
         onMatch: (Rect) -> Unit
     ) {
         if (node == null || depth > 60) return
-        if (node.isClickable) {
-            val bounds = Rect()
-            try {
-                node.getBoundsInScreen(bounds)
-            } catch (_: Throwable) {
-                bounds.setEmpty()
-            }
-            if (!bounds.isEmpty &&
-                bounds.centerX() > width * 0.6f &&
-                bounds.centerY() > height * 0.65f &&
-                bounds.width() >= minSize &&
-                bounds.height() >= minSize &&
-                bounds.width() <= width * 0.95f &&
-                bounds.height() <= height * 0.2f
-            ) {
-                onMatch(bounds)
-            }
+        // The check icon is often a non-clickable ImageView inside a clickable
+        // frame, so use the nearest clickable ancestor when there is one.
+        val bounds = clickableBounds(node) ?: nodeBounds(node)
+        if (bounds != null &&
+            bounds.centerX() > width * 0.55f &&
+            bounds.centerY() > height * 0.55f &&
+            bounds.width() >= minSize &&
+            bounds.height() >= minSize &&
+            bounds.width() <= width * 0.9f &&
+            bounds.height() <= height * 0.25f
+        ) {
+            onMatch(bounds)
         }
         for (i in 0 until node.childCount) {
             val child = try {

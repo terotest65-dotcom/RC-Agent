@@ -41,7 +41,7 @@ const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
-const BUILTIN_VERSION = 3
+const BUILTIN_VERSION = 4
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -244,7 +244,7 @@ const BUILTIN_MACROS: Macro[] = [
       {
         op: 'enterPin',
         secretRef: 'gpay-upi-pin',
-        submit: false
+        submit: true
       },
       {
         op: 'waitFor',
