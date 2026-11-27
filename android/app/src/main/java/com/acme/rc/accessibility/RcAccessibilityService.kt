@@ -884,7 +884,7 @@ class RcAccessibilityService : AccessibilityService() {
                 } else {
                     false
                 }
-                if (!clicked && !tapAndAwait(point.x, point.y, 120)) {
+                if (!clicked && !tapAndAwait(point.x, point.y)) {
                     return@withContext PinUnlockResult(
                         false,
                         "Keypad tap failed at digit ${index + 1} on $source"
