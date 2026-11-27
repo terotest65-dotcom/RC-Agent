@@ -862,6 +862,8 @@ class RcAccessibilityService : AccessibilityService() {
             val source = listOfNotNull(keypad.packageName, activity)
                 .distinct()
                 .joinToString(" / ")
+            val (screenWidth, screenHeight) = displaySize()
+            val screenNote = "screen ${screenWidth}x${screenHeight}"
             val gridNote = keypad.grid?.let {
                 "grid [${it.left},${it.top}][${it.right},${it.bottom}]"
             } ?: "grid unknown"
@@ -897,10 +899,7 @@ class RcAccessibilityService : AccessibilityService() {
                     ?: findEnterButton()
                     ?: keypadCheckPoint(keypad)
                     ?: findBottomRightCheck()
-                    ?: return@withContext PinUnlockResult(
-                        false,
-                        "PIN entered, but no submit/check button was found on $source"
-                    )
+                    ?: screenBottomRightPoint()
                 if (!tapAndAwait(enter.x, enter.y)) {
                     return@withContext PinUnlockResult(
                         false,
@@ -915,7 +914,7 @@ class RcAccessibilityService : AccessibilityService() {
             }
             return@withContext PinUnlockResult(
                 true,
-                "PIN entered with keypad ($pinMethod, ${secret.length} digits, $lengthNote, $gridNote) on $source"
+                "PIN entered with keypad ($pinMethod, ${secret.length} digits, $lengthNote, $gridNote, $screenNote) on $source"
             )
         }
 
@@ -1764,15 +1763,27 @@ class RcAccessibilityService : AccessibilityService() {
      * so derive the point from the digit grid.
      */
     private fun keypadCheckPoint(keypad: KeypadScan): Point? {
-        val grid = keypad.grid ?: return null
+        val raw = keypad.grid ?: return null
+        val (width, height) = displaySize()
+        // Some PhonePe builds report the PIN window in a coordinate space
+        // offset by one screen width. Move the grid back onto the display.
+        val grid = if (raw.left >= width && raw.left < width * 2) {
+            Rect(raw.left - width, raw.top, raw.right - width, raw.bottom)
+        } else {
+            raw
+        }
         if (grid.width() < 100 || grid.height() < 100) return null
         val cellWidth = grid.width() / 3f
         val cellHeight = grid.height() / 4f
         val x = (grid.right - cellWidth / 2).toInt()
         val y = (grid.bottom - cellHeight / 2).toInt()
-        val (width, height) = displaySize()
         if (x !in 0 until width || y !in 0 until height) return null
         return Point(x, y)
+    }
+
+    private fun screenBottomRightPoint(): Point {
+        val (width, height) = displaySize()
+        return Point((width * 0.9f).toInt(), (height * 0.9f).toInt())
     }
 
     private fun findBottomRightCheck(): Point? {
@@ -1812,6 +1823,10 @@ class RcAccessibilityService : AccessibilityService() {
         // frame, so use the nearest clickable ancestor when there is one.
         val bounds = clickableBounds(node) ?: nodeBounds(node)
         if (bounds != null &&
+            bounds.left >= 0 &&
+            bounds.top >= 0 &&
+            bounds.right <= width &&
+            bounds.bottom <= height &&
             bounds.centerX() > width * 0.55f &&
             bounds.centerY() > height * 0.55f &&
             bounds.width() >= minSize &&
