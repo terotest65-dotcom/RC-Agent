@@ -440,7 +440,8 @@ class RcAccessibilityService : AccessibilityService() {
     private data class KeypadScan(
         val digits: Map<Char, Point>,
         val enter: Point?,
-        val packageName: String? = null
+        val packageName: String? = null,
+        val grid: Rect? = null
     )
 
     /**
@@ -828,24 +829,40 @@ class RcAccessibilityService : AccessibilityService() {
         }
 
         val digitsOnly = secret.all { it.isDigit() }
-        var keypad = scanKeypad(scopedRoot)
+        var keypad = scanKeypad(scopedRoot, activeOnly = scopedRoot == null)
         var field = findAppField()
 
         // A progress dialog often sits between the previous screen and PIN
         // entry. A UPI PIN screen also exposes a hidden editable field before
         // its keypad is ready; filling that field does not submit the PIN, so
-        // a numeric secret waits for the real keypad.
+        // a numeric secret waits for the real keypad. Only accept a keypad
+        // from the active window: a progress dialog on top of the PIN screen
+        // would otherwise swallow the digit taps.
         val deadline = SystemClock.elapsedRealtime() + 10_000
         while (digitsOnly && keypad.digits.size < 10 &&
             SystemClock.elapsedRealtime() < deadline
         ) {
             delay(250)
-            keypad = scanKeypad(selector?.let { findNode(it) })
+            keypad = scanKeypad(
+                selector?.let { findNode(it) },
+                activeOnly = selector == null
+            )
             field = findAppField()
+        }
+        if (digitsOnly && keypad.digits.size < 10 && selector == null) {
+            // Some PIN pads live in a non-focused window. Try the full window
+            // set once the progress dialog has had time to close.
+            keypad = scanKeypad()
         }
 
         if (digitsOnly && keypad.digits.size >= 10) {
-            val source = keypad.packageName ?: currentActivity ?: currentPackage ?: "unknown"
+            val activity = currentActivity ?: currentPackage ?: "unknown"
+            val source = listOfNotNull(keypad.packageName, activity)
+                .distinct()
+                .joinToString(" / ")
+            val gridNote = keypad.grid?.let {
+                "grid [${it.left},${it.top}][${it.right},${it.bottom}]"
+            } ?: "grid unknown"
             val startLength = pinFieldLength()
             for ((index, digit) in secret.withIndex()) {
                 val point = keypad.digits[digit]
@@ -883,7 +900,7 @@ class RcAccessibilityService : AccessibilityService() {
             }
             return@withContext PinUnlockResult(
                 true,
-                "PIN entered with keypad (${secret.length} digits, $lengthNote) on $source"
+                "PIN entered with keypad (${secret.length} digits, $lengthNote, $gridNote) on $source"
             )
         }
 
@@ -1470,33 +1487,57 @@ class RcAccessibilityService : AccessibilityService() {
         return completed == true
     }
 
-    private fun scanKeypad(root: AccessibilityNodeInfo? = null): KeypadScan {
-        val active = activeRoot()
-        val roots = if (root != null) {
-            listOf(root)
-        } else {
-            // The topmost window is the PIN dialog. Try it before any window
-            // behind it; mixing digit nodes from two windows produces taps at
-            // the wrong coordinates.
-            if (active != null) listOf(active) + orderedWindowRoots()
-            else orderedWindowRoots()
+    private fun scanKeypad(
+        root: AccessibilityNodeInfo? = null,
+        activeOnly: Boolean = false
+    ): KeypadScan {
+        val roots = when {
+            root != null -> listOf(root)
+            activeOnly -> listOfNotNull(activeRoot())
+            else -> {
+                val active = activeRoot()
+                // The topmost window is the PIN dialog. Try it before any
+                // window behind it; mixing digit nodes from two windows
+                // produces taps at the wrong coordinates.
+                if (active != null) listOf(active) + orderedWindowRoots()
+                else orderedWindowRoots()
+            }
         }
 
         for (candidate in roots) {
-            val digits = linkedMapOf<Char, Point>()
-            val enter = mutableListOf<Point>()
-            collectKeypad(candidate, digits, enter)
-            // A password bouncer's QWERTY row (or a numeric IME) can expose
-            // ten "digit" nodes. Only accept a real 3-column keypad.
-            if (digits.size >= 10 && looksLikeKeypad(digits)) {
-                return KeypadScan(
-                    digits = digits,
-                    enter = enter.firstOrNull(),
-                    packageName = candidate.packageName?.toString()
-                )
-            }
+            keypadIn(candidate, useClickableBounds = false)?.let { return it }
+            keypadIn(candidate, useClickableBounds = true)?.let { return it }
         }
-        return KeypadScan(emptyMap(), null, null)
+        return KeypadScan(emptyMap(), null, null, null)
+    }
+
+    private fun keypadIn(
+        candidate: AccessibilityNodeInfo,
+        useClickableBounds: Boolean
+    ): KeypadScan? {
+        val digits = linkedMapOf<Char, Point>()
+        val enter = mutableListOf<Point>()
+        val digitBounds = mutableListOf<Rect>()
+        collectKeypad(candidate, digits, enter, digitBounds, useClickableBounds)
+        // A password bouncer's QWERTY row (or a numeric IME) can expose
+        // ten "digit" nodes. Only accept a real 3-column keypad.
+        if (digits.size < 10 || !looksLikeKeypad(digits)) return null
+        val grid = if (digitBounds.isEmpty()) {
+            null
+        } else {
+            Rect(
+                digitBounds.minOf { it.left },
+                digitBounds.minOf { it.top },
+                digitBounds.maxOf { it.right },
+                digitBounds.maxOf { it.bottom }
+            )
+        }
+        return KeypadScan(
+            digits = digits,
+            enter = enter.firstOrNull(),
+            packageName = candidate.packageName?.toString(),
+            grid = grid
+        )
     }
 
     private fun orderedWindowRoots(): List<AccessibilityNodeInfo> {
@@ -1550,6 +1591,8 @@ class RcAccessibilityService : AccessibilityService() {
         node: AccessibilityNodeInfo?,
         digits: MutableMap<Char, Point>,
         enter: MutableList<Point>,
+        digitBounds: MutableList<Rect>,
+        useClickableBounds: Boolean = false,
         depth: Int = 0
     ) {
         if (node == null || depth > 60) return
@@ -1560,8 +1603,17 @@ class RcAccessibilityService : AccessibilityService() {
 
         if (digit != null) {
             if (!digits.containsKey(digit)) {
-                clickableBounds(node)?.let {
-                    digits[digit] = Point(it.centerX(), it.centerY())
+                // Prefer the digit node's own bounds. Climbing to a clickable
+                // ancestor can return the whole keypad on custom PIN pads, so
+                // that is only a fallback when the node has no usable bounds.
+                val bounds = if (useClickableBounds) {
+                    clickableBounds(node)
+                } else {
+                    nodeBounds(node) ?: clickableBounds(node)
+                }
+                if (bounds != null) {
+                    digits[digit] = Point(bounds.centerX(), bounds.centerY())
+                    digitBounds += Rect(bounds)
                 }
             }
         } else if (enter.size < 2 && isEnterNode(node, label)) {
@@ -1576,7 +1628,7 @@ class RcAccessibilityService : AccessibilityService() {
             } catch (_: Throwable) {
                 null
             }
-            collectKeypad(child, digits, enter, depth + 1)
+            collectKeypad(child, digits, enter, digitBounds, useClickableBounds, depth + 1)
         }
     }
 
@@ -1727,6 +1779,16 @@ class RcAccessibilityService : AccessibilityService() {
             findClickableLabelIn(child, labels, depth + 1)?.let { return it }
         }
         return null
+    }
+
+    private fun nodeBounds(node: AccessibilityNodeInfo): Rect? {
+        val rect = Rect()
+        return try {
+            node.getBoundsInScreen(rect)
+            if (rect.isEmpty) null else Rect(rect)
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     private fun clickableBounds(
