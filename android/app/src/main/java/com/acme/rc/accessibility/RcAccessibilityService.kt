@@ -898,8 +898,8 @@ class RcAccessibilityService : AccessibilityService() {
                 val (screenW, screenH) = displaySize()
                 val candidates = mutableListOf<Point>()
                 keypad.enter?.let { candidates += it }
-                findEnterButton()?.let { candidates += it }
                 keypadCheckPoint(keypad)?.let { candidates += it }
+                findEnterButton()?.let { candidates += it }
                 findBottomRightCheck()?.let { candidates += it }
                 candidates += screenBottomRightPoint()
                 candidates += Point(
@@ -1713,8 +1713,25 @@ class RcAccessibilityService : AccessibilityService() {
         return match.groupValues.getOrNull(1)?.firstOrNull()
     }
 
+    private fun isBlockedEnterLabel(label: String): Boolean {
+        if (label.contains("back") || label.contains("cancel") ||
+            label.contains("close") || label.contains("delete") ||
+            label.contains("clear")
+        ) {
+            return true
+        }
+        val words = label.split(' ')
+        return "up" in words || "previous" in words || "prev" in words
+    }
+
     private fun isEnterNode(node: AccessibilityNodeInfo, label: String?): Boolean {
-        if (label != null && label in ENTER_LABELS) return true
+        if (label != null && !isBlockedEnterLabel(label) && (
+                label in ENTER_LABELS ||
+                    ENTER_TERMS.any { label.contains(it) }
+                )
+        ) {
+            return true
+        }
         val viewId = node.viewIdResourceName ?: return false
         return keypadEnterId.containsMatchIn(viewId)
     }
@@ -1752,7 +1769,7 @@ class RcAccessibilityService : AccessibilityService() {
     ): Point? {
         if (node == null || depth > 60) return null
         val label = labelOf(node)?.lowercase()
-        val byLabel = label != null && (
+        val byLabel = label != null && !isBlockedEnterLabel(label) && (
             label in ENTER_LABELS ||
                 (allowContains && ENTER_TERMS.any { label.contains(it) })
             )

@@ -41,7 +41,7 @@ const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
-const BUILTIN_VERSION = 5
+const BUILTIN_VERSION = 6
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -178,19 +178,7 @@ const BUILTIN_MACROS: Macro[] = [
         timeoutMs: 20000
       },
       { op: 'screenshot', label: 'balance' },
-      { op: 'assert', selector: { contains: 'Balance' } },
-      {
-        op: 'scroll',
-        selector: { viewId: 'com.phonepe.app:id/rv_process_check_balance' },
-        dir: 'down'
-      },
-      {
-        op: 'scroll',
-        selector: { viewId: 'com.phonepe.app:id/rv_process_check_balance' },
-        dir: 'down'
-      },
-      { op: 'screenshot', label: 'balance-details' },
-      { op: 'tapIfExists', selector: { text: 'DONE' } }
+      { op: 'assert', selector: { contains: 'Balance' } }
     ]
   },
   {
