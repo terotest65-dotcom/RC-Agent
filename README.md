@@ -120,7 +120,8 @@ right-side activity drawer:
   the app is already unlocked. A selector's `index` picks the Nth match
   (1-based) and accepts a `{{param}}`, so a macro can choose the first or second
   account from a list. Set `ignoreCase` for labels that change case between
-  screens, and `optional: true` on a best-effort step so it can be skipped.
+  screens, `descContains` for labels exposed as content descriptions, and
+  `optional: true` on a best-effort step so it can be skipped.
 - **Recorder** — passive per-app recording: click **Record** on an app, then
   open that app on the device yourself. Leaving the app or pressing
   **Stop & save** saves the macro. Live text/tap/scroll feed, text-only

@@ -1237,6 +1237,10 @@ class AgentService : Service() {
             text = resolve(json.optString("text").takeIf { it.isNotBlank() }, params),
             contains = resolve(json.optString("contains").takeIf { it.isNotBlank() }, params),
             desc = resolve(json.optString("desc").takeIf { it.isNotBlank() }, params),
+            descContains = resolve(
+                json.optString("descContains").takeIf { it.isNotBlank() },
+                params
+            ),
             className = json.optString("className").takeIf { it.isNotBlank() },
             index = indexText?.toIntOrNull()?.coerceAtLeast(1) ?: 1,
             ignoreCase = json.optBoolean("ignoreCase", false)

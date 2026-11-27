@@ -40,6 +40,8 @@ const here = fileURLToPath(new URL('.', import.meta.url))
 const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
+const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
+const BUILTIN_VERSION = 3
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -166,7 +168,7 @@ const BUILTIN_MACROS: Macro[] = [
       {
         op: 'enterPin',
         secretRef: 'phonepe-upi-pin',
-        submit: false
+        submit: true
       },
       { op: 'sleep', ms: 2500 },
       {
@@ -204,18 +206,41 @@ const BUILTIN_MACROS: Macro[] = [
       { op: 'tapIfExists', selector: { contains: 'Skip' } },
       { op: 'tapIfExists', selector: { desc: 'Back' } },
       { op: 'tapIfExists', selector: { text: 'Home' } },
+      { op: 'tapIfExists', selector: { descContains: 'Home' } },
+      {
+        op: 'waitFor',
+        selector: { descContains: 'Bank balance' },
+        timeoutMs: 8000,
+        optional: true
+      },
       {
         op: 'waitFor',
         selector: { contains: 'Bank balance' },
-        timeoutMs: 15000
+        timeoutMs: 2000,
+        optional: true
       },
-      { op: 'tap', selector: { contains: 'Bank balance' } },
+      { op: 'tapIfExists', selector: { descContains: 'Bank balance' } },
+      { op: 'tapIfExists', selector: { contains: 'Bank balance' } },
+      {
+        op: 'waitFor',
+        selector: { descContains: 'Check balance' },
+        timeoutMs: 8000,
+        optional: true
+      },
       {
         op: 'waitFor',
         selector: { contains: 'Check balance' },
-        timeoutMs: 15000
+        timeoutMs: 2000,
+        optional: true
       },
-      { op: 'tap', selector: { contains: 'Bank', index: '{{bank}}' } },
+      {
+        op: 'tapIfExists',
+        selector: { descContains: 'Bank', index: '{{bank}}' }
+      },
+      {
+        op: 'tapIfExists',
+        selector: { contains: 'Bank', index: '{{bank}}' }
+      },
       {
         op: 'enterPin',
         secretRef: 'gpay-upi-pin',
@@ -223,14 +248,14 @@ const BUILTIN_MACROS: Macro[] = [
       },
       {
         op: 'waitFor',
-        selector: { contains: 'done', ignoreCase: true },
+        selector: { descContains: 'done', ignoreCase: true },
         timeoutMs: 8000,
         optional: true
       },
       { op: 'screenshot', label: 'balance' },
       {
         op: 'tapIfExists',
-        selector: { contains: 'done', ignoreCase: true }
+        selector: { descContains: 'done', ignoreCase: true }
       }
     ]
   },
@@ -629,6 +654,41 @@ function sendRuns(ws: WsSocket) {
 // Macro persistence
 // ---------------------------------------------------------------------
 
+interface MacroSeedState {
+  version: number
+  macros: Record<string, string>
+}
+
+function readMacroSeedState(): MacroSeedState {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(MACROS_SEED_FILE, 'utf8')
+    ) as Partial<MacroSeedState>
+    if (parsed?.macros && typeof parsed.macros === 'object') {
+      return {
+        version: Number(parsed.version) || 0,
+        macros: parsed.macros
+      }
+    }
+  } catch {
+    // Older releases wrote only a timestamp, or the file is missing.
+  }
+  return { version: 0, macros: {} }
+}
+
+function macroFingerprint(macro: Macro): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        name: macro.name,
+        appPackage: macro.appPackage ?? '',
+        params: macro.params ?? {},
+        steps: macro.steps
+      })
+    )
+    .digest('hex')
+}
+
 function loadMacros() {
   let changed = false
 
@@ -645,26 +705,69 @@ function loadMacros() {
     }
   }
 
-  // Seed built-in macros once. The marker keeps a deleted macro deleted after
-  // the next restart. Delete server/data/macros.seed to restore them.
-  const seedFile = join(DATA_DIR, 'macros.seed')
-  if (!existsSync(seedFile) || macros.size === 0) {
-    const now = Date.now()
-    for (const builtin of BUILTIN_MACROS) {
-      const exists = [...macros.values()].some(
-        (macro) => macro.id === builtin.id || macro.name === builtin.name
+  // Add new built-ins and refresh untouched ones. The seed marker stores a
+  // fingerprint of each seeded definition: a macro the operator edited no
+  // longer matches, so it is never overwritten. A deleted built-in stays
+  // deleted because its id is still recorded. Delete server/data/macros.seed
+  // to restore deleted built-ins.
+  const seed = readMacroSeedState()
+  const nextHashes: Record<string, string> = { ...seed.macros }
+  const now = Date.now()
+  let markerChanged = seed.version !== BUILTIN_VERSION
+
+  for (const builtin of BUILTIN_MACROS) {
+    const existing = macros.get(builtin.id)
+    const recordedHash = seed.macros[builtin.id]
+
+    if (!existing) {
+      if (recordedHash) continue
+      const duplicate = [...macros.values()].some(
+        (macro) => macro.name === builtin.name && macro.id !== builtin.id
       )
-      if (exists) continue
-      macros.set(builtin.id, {
+      if (duplicate) continue
+      const added: Macro = {
         ...builtin,
-        createdAt: builtin.createdAt ?? now,
-        updatedAt: builtin.updatedAt ?? now
-      })
+        createdAt: now,
+        updatedAt: now
+      }
+      macros.set(builtin.id, added)
+      nextHashes[builtin.id] = macroFingerprint(added)
       changed = true
+      markerChanged = true
+      continue
     }
+
+    const currentFingerprint = macroFingerprint(existing)
+    const untouched = recordedHash
+      ? currentFingerprint === recordedHash
+      : existing.updatedAt === existing.createdAt
+    if (seed.version < BUILTIN_VERSION && untouched) {
+      const updated: Macro = {
+        ...builtin,
+        createdAt: existing.createdAt,
+        updatedAt: now
+      }
+      const updatedFingerprint = macroFingerprint(updated)
+      if (updatedFingerprint !== currentFingerprint) {
+        macros.set(builtin.id, updated)
+        changed = true
+      }
+      nextHashes[builtin.id] = updatedFingerprint
+      markerChanged = true
+    }
+  }
+
+  if (markerChanged) {
     try {
       mkdirSync(DATA_DIR, { recursive: true })
-      writeFileSync(seedFile, `${new Date().toISOString()}\n`)
+      writeFileSync(
+        MACROS_SEED_FILE,
+        `${JSON.stringify(
+          { version: BUILTIN_VERSION, macros: nextHashes },
+          null,
+          2
+        )}\n`
+      )
     } catch (error) {
       log('failed to write macro seed marker', error)
     }

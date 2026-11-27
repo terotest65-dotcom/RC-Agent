@@ -205,10 +205,11 @@ export interface Selector {
   text?: string
   contains?: string
   desc?: string
+  descContains?: string
   className?: string
   /** Pick the Nth match in tree order, 1-based. Defaults to the first. */
   index?: number | string
-  /** Match text, contains, and desc without regard to case. */
+  /** Match text, contains, desc, and descContains without regard to case. */
   ignoreCase?: boolean
 }
 
