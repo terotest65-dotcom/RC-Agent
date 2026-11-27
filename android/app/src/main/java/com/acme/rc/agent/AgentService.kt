@@ -958,7 +958,11 @@ class AgentService : Service() {
         val submit: Boolean
     )
 
-    private data class StepResult(val status: String, val error: String? = null)
+    private data class StepResult(
+        val status: String,
+        val error: String? = null,
+        val detail: String? = null
+    )
 
     private suspend fun runMacro(runId: String, macro: JSONObject, params: JSONObject) {
         runVars.clear()
@@ -994,6 +998,7 @@ class AgentService : Service() {
             val stepStarted = SystemClock.elapsedRealtime()
             var stepStatus = "ok"
             var error: String? = null
+            var stepDetail: String? = null
             var snapshot: Snapshot? = null
 
             try {
@@ -1004,6 +1009,7 @@ class AgentService : Service() {
                 } else {
                     stepStatus = result.status
                     error = result.error
+                    stepDetail = result.detail
                     when (result.status) {
                         "failed" -> status = "failed"
                         "unverified" -> if (status == "success") status = "unverified"
@@ -1034,6 +1040,7 @@ class AgentService : Service() {
                 status = stepStatus,
                 ms = SystemClock.elapsedRealtime() - stepStarted,
                 error = error,
+                detail = stepDetail,
                 snapshot = snapshot
             )
 
@@ -1056,6 +1063,7 @@ class AgentService : Service() {
 
     private suspend fun executeStep(step: Step, params: JSONObject): StepResult {
         val service = service()
+        var stepDetail: String? = null
 
         when (step.op) {
             "launch" -> {
@@ -1117,6 +1125,7 @@ class AgentService : Service() {
                 if (!pinResult.ok) {
                     return StepResult("failed", pinResult.detail)
                 }
+                stepDetail = pinResult.detail
                 delay(600)
             }
             "scroll" -> {
@@ -1148,11 +1157,11 @@ class AgentService : Service() {
         if (step.expect != null) {
             delay(300)
             if (!service.exists(step.expect)) {
-                return StepResult("unverified", "expect not met")
+                return StepResult("unverified", "expect not met", stepDetail)
             }
         }
 
-        return StepResult("ok")
+        return StepResult("ok", detail = stepDetail)
     }
 
     private suspend fun waitForSelector(
@@ -1268,6 +1277,7 @@ class AgentService : Service() {
         status: String,
         ms: Long,
         error: String?,
+        detail: String?,
         snapshot: Snapshot?
     ) {
         val payload = JSONObject()
@@ -1276,6 +1286,7 @@ class AgentService : Service() {
             .put("status", status)
             .put("ms", ms)
             .put("error", error ?: JSONObject.NULL)
+            .put("detail", detail ?: JSONObject.NULL)
             .put("label", step.label ?: JSONObject.NULL)
         if (snapshot != null) payload.put("snapshot", snapshotJson(snapshot))
         socket?.send(

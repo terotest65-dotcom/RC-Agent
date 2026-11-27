@@ -3297,6 +3297,9 @@ function RunReport({ run }: { run: RunRecord }) {
                 <span className={`step-status ${step.status}`}>{step.status}</span>
               </div>
               {step.error && <div className="error small">{step.error}</div>}
+              {step.detail && (
+                <div className="step-detail">{step.detail}</div>
+              )}
               {step.snapshot?.image && (
                 <details>
                   <summary>

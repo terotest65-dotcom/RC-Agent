@@ -439,7 +439,8 @@ class RcAccessibilityService : AccessibilityService() {
 
     private data class KeypadScan(
         val digits: Map<Char, Point>,
-        val enter: Point?
+        val enter: Point?,
+        val packageName: String? = null
     )
 
     /**
@@ -844,46 +845,60 @@ class RcAccessibilityService : AccessibilityService() {
         }
 
         if (digitsOnly && keypad.digits.size >= 10) {
+            val source = keypad.packageName ?: currentActivity ?: currentPackage ?: "unknown"
+            val startLength = pinFieldLength()
             for ((index, digit) in secret.withIndex()) {
                 val point = keypad.digits[digit]
                     ?: return@withContext PinUnlockResult(
                         false,
-                        "PIN keypad is missing the digit '$digit'"
+                        "PIN keypad is missing the digit '$digit' on $source"
                     )
                 if (!tapAndAwait(point.x, point.y)) {
                     return@withContext PinUnlockResult(
                         false,
-                        "Keypad tap failed at digit ${index + 1}"
+                        "Keypad tap failed at digit ${index + 1} on $source"
                     )
                 }
                 delay(80)
             }
+            val endLength = pinFieldLength()
             if (submit) {
                 delay(200)
                 val enter = keypad.enter ?: findEnterButton() ?: findBottomRightCheck()
                     ?: return@withContext PinUnlockResult(
                         false,
-                        "PIN entered, but no submit/check button was found"
+                        "PIN entered, but no submit/check button was found on $source"
                     )
                 if (!tapAndAwait(enter.x, enter.y)) {
                     return@withContext PinUnlockResult(
                         false,
-                        "PIN entered, but the submit/check tap failed"
+                        "PIN entered, but the submit/check tap failed on $source"
                     )
                 }
             }
-            return@withContext PinUnlockResult(true, "PIN entered")
+            val lengthNote = if (startLength != null && endLength != null) {
+                "field $startLength→$endLength"
+            } else {
+                "field unreadable"
+            }
+            return@withContext PinUnlockResult(
+                true,
+                "PIN entered with keypad (${secret.length} digits, $lengthNote) on $source"
+            )
         }
 
         val targetField = field
             ?: return@withContext PinUnlockResult(
                 false,
                 if (digitsOnly) {
-                    "No numeric PIN keypad or text field was found"
+                    "No numeric PIN keypad or text field was found " +
+                        "(activity: ${currentActivity ?: currentPackage ?: "unknown"})"
                 } else {
-                    "No PIN/password field was found"
+                    "No PIN/password field was found " +
+                        "(activity: ${currentActivity ?: currentPackage ?: "unknown"})"
                 }
             )
+        val source = currentActivity ?: currentPackage ?: "unknown"
         val set = try {
             targetField.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
             val arguments = Bundle().apply {
@@ -899,7 +914,7 @@ class RcAccessibilityService : AccessibilityService() {
         if (!set) {
             return@withContext PinUnlockResult(
                 false,
-                "The PIN/password field did not accept text"
+                "The PIN/password field did not accept text on $source"
             )
         }
 
@@ -910,7 +925,7 @@ class RcAccessibilityService : AccessibilityService() {
                 if (!tapAndAwait(enterButton.x, enterButton.y)) {
                     return@withContext PinUnlockResult(
                         false,
-                        "The submit/check tap failed"
+                        "The submit/check tap failed on $source"
                     )
                 }
             } else {
@@ -923,7 +938,20 @@ class RcAccessibilityService : AccessibilityService() {
                 }
             }
         }
-        PinUnlockResult(true, "PIN entered")
+        PinUnlockResult(
+            true,
+            "PIN filled into a text field (${secret.length} chars) on $source"
+        )
+    }
+
+    /** Length of the visible PIN/password field, when the app exposes it. */
+    private fun pinFieldLength(): Int? {
+        val field = findAppField() ?: return null
+        return try {
+            field.text?.length
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     private fun findAppField(): AccessibilityNodeInfo? {
@@ -1443,22 +1471,32 @@ class RcAccessibilityService : AccessibilityService() {
     }
 
     private fun scanKeypad(root: AccessibilityNodeInfo? = null): KeypadScan {
-        val digits = linkedMapOf<Char, Point>()
-        val enter = mutableListOf<Point>()
-        val roots = if (root != null) listOf(root) else orderedWindowRoots()
+        val active = activeRoot()
+        val roots = if (root != null) {
+            listOf(root)
+        } else {
+            // The topmost window is the PIN dialog. Try it before any window
+            // behind it; mixing digit nodes from two windows produces taps at
+            // the wrong coordinates.
+            if (active != null) listOf(active) + orderedWindowRoots()
+            else orderedWindowRoots()
+        }
 
         for (candidate in roots) {
+            val digits = linkedMapOf<Char, Point>()
+            val enter = mutableListOf<Point>()
             collectKeypad(candidate, digits, enter)
-            if (digits.size >= 10) break
+            // A password bouncer's QWERTY row (or a numeric IME) can expose
+            // ten "digit" nodes. Only accept a real 3-column keypad.
+            if (digits.size >= 10 && looksLikeKeypad(digits)) {
+                return KeypadScan(
+                    digits = digits,
+                    enter = enter.firstOrNull(),
+                    packageName = candidate.packageName?.toString()
+                )
+            }
         }
-        // A password bouncer's QWERTY row (or a numeric IME) can expose ten
-        // "digit" nodes. Only accept a real 3-column keypad so a wrong layout
-        // does not burn a failed unlock attempt.
-        val validKeypad = looksLikeKeypad(digits)
-        return KeypadScan(
-            digits = if (validKeypad) digits else emptyMap(),
-            enter = if (validKeypad) enter.firstOrNull() else null
-        )
+        return KeypadScan(emptyMap(), null, null)
     }
 
     private fun orderedWindowRoots(): List<AccessibilityNodeInfo> {

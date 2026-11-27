@@ -271,6 +271,7 @@ export interface RunStep {
   status: StepStatus
   ms?: number
   error?: string | null
+  detail?: string | null
   label?: string
   snapshot?: SnapshotMessage
 }
