@@ -41,7 +41,7 @@ const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
-const BUILTIN_VERSION = 12
+const BUILTIN_VERSION = 13
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -344,6 +344,99 @@ const BUILTIN_MACROS: Macro[] = [
         op: 'tapIfExists',
         selector: { descContains: 'done', ignoreCase: true }
       }
+    ]
+  },
+  {
+    id: 'builtin-gpay-pay',
+    name: 'GPay — pay a UPI ID',
+    appPackage: 'com.google.android.apps.nbu.paisa.user',
+    maxAmount: 100,
+    params: {
+      upiId: { type: 'string', required: true },
+      amount: { type: 'number', required: true, default: 1 }
+    },
+    steps: [
+      { op: 'launch', package: 'com.google.android.apps.nbu.paisa.user' },
+      { op: 'waitForIdle' },
+      { op: 'appUnlock', package: 'com.google.android.apps.nbu.paisa.user' },
+      { op: 'tapIfExists', selector: { contains: 'Skip' } },
+      { op: 'tapIfExists', selector: { desc: 'Back' } },
+      { op: 'tapIfExists', selector: { text: 'Home' } },
+      { op: 'tapIfExists', selector: { descContains: 'Home' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Pay anyone' },
+        timeoutMs: 15000
+      },
+      { op: 'tap', selector: { contains: 'Pay anyone' } },
+      {
+        op: 'waitFor',
+        selector: { hintContains: 'UPI' },
+        timeoutMs: 8000,
+        optional: true
+      },
+      { op: 'tapIfExists', selector: { hintContains: 'UPI' } },
+      {
+        op: 'setText',
+        selector: { hintContains: 'UPI' },
+        text: '{{upiId}}',
+        optional: true
+      },
+      {
+        op: 'setText',
+        selector: { editable: true, index: 1 },
+        text: '{{upiId}}'
+      },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Continue', ignoreCase: true },
+        timeoutMs: 15000
+      },
+      { op: 'tap', selector: { contains: 'Continue', ignoreCase: true } },
+      {
+        op: 'tapFirst',
+        selectors: [
+          { text: 'Pay', ignoreCase: true },
+          { contains: 'Pay ₹', ignoreCase: true },
+          { desc: 'Pay', ignoreCase: true },
+          { descContains: 'Pay', ignoreCase: true }
+        ],
+        timeoutMs: 15000
+      },
+      { op: 'enterDigits', text: '{{amount}}' },
+      {
+        op: 'tapFirst',
+        selectors: [
+          { descContains: 'Next', ignoreCase: true },
+          { contains: 'Next', ignoreCase: true },
+          { descContains: 'Forward', ignoreCase: true },
+          { contains: 'Forward', ignoreCase: true },
+          { descContains: 'Proceed', ignoreCase: true },
+          { contains: 'Proceed', ignoreCase: true },
+          { descContains: 'Continue', ignoreCase: true },
+          { contains: 'Continue', ignoreCase: true }
+        ],
+        timeoutMs: 15000
+      },
+      {
+        op: 'enterPin',
+        secretRef: 'gpay-upi-pin',
+        submit: true,
+        requireActivity: 'GetCredential'
+      },
+      {
+        op: 'waitForFirst',
+        selectors: [
+          { contains: 'success', ignoreCase: true },
+          { contains: 'paid', ignoreCase: true },
+          { contains: 'completed', ignoreCase: true },
+          { contains: 'transaction', ignoreCase: true },
+          { contains: 'sent', ignoreCase: true },
+          { contains: 'done', ignoreCase: true }
+        ],
+        timeoutMs: 60000
+      },
+      { op: 'screenshot', label: 'payment' }
     ]
   },
   {
