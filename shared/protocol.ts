@@ -226,6 +226,7 @@ export type MacroOp =
   | 'tapIfExists'
   | 'setText'
   | 'enterPin'
+  | 'enterDigits'
   | 'scroll'
   | 'globalAction'
   | 'screenshot'

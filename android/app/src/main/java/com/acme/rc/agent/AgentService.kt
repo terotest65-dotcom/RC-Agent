@@ -1134,6 +1134,30 @@ class AgentService : Service() {
                 stepDetail = pinResult.detail
                 delay(600)
             }
+            "enterDigits" -> {
+                val text = resolve(step.text, params)
+                if (text.isNullOrBlank()) {
+                    return StepResult("failed", "enterDigits requires text")
+                }
+                if (!text.all { it.isDigit() }) {
+                    return StepResult(
+                        "failed",
+                        "enterDigits supports whole numbers only"
+                    )
+                }
+                val result = service.enterPin(
+                    text,
+                    step.selector,
+                    submit = false,
+                    pinMethod = step.pinMethod,
+                    purpose = "Amount"
+                )
+                if (!result.ok) {
+                    return StepResult("failed", result.detail)
+                }
+                stepDetail = result.detail
+                delay(400)
+            }
             "scroll" -> {
                 val selector = step.selector
                     ?: return StepResult("failed", "scroll requires selector")

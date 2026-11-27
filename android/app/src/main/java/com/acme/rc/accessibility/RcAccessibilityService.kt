@@ -819,15 +819,16 @@ class RcAccessibilityService : AccessibilityService() {
         secret: String,
         selector: Selector? = null,
         submit: Boolean = true,
-        pinMethod: String = "gesture"
+        pinMethod: String = "gesture",
+        purpose: String = "PIN"
     ): PinUnlockResult = withContext(Dispatchers.Default) {
         if (secret.isBlank()) {
-            return@withContext PinUnlockResult(false, "No PIN value was provided")
+            return@withContext PinUnlockResult(false, "No $purpose value was provided")
         }
 
         val scopedRoot = selector?.let { findNode(it) }
         if (selector != null && scopedRoot == null) {
-            return@withContext PinUnlockResult(false, "PIN entry container not found")
+            return@withContext PinUnlockResult(false, "$purpose entry container not found")
         }
 
         val digitsOnly = secret.all { it.isDigit() }
@@ -872,7 +873,7 @@ class RcAccessibilityService : AccessibilityService() {
                 val point = keypad.digits[digit]
                     ?: return@withContext PinUnlockResult(
                         false,
-                        "PIN keypad is missing the digit '$digit' on $source"
+                        "$purpose keypad is missing the digit '$digit' on $source"
                     )
                 val keyNode = keypad.keyNodes[digit]
                 val clicked = if (pinMethod == "click" && keyNode != null) {
@@ -898,8 +899,8 @@ class RcAccessibilityService : AccessibilityService() {
                 val (screenW, screenH) = displaySize()
                 val candidates = mutableListOf<Point>()
                 keypad.enter?.let { candidates += it }
-                keypadCheckPoint(keypad)?.let { candidates += it }
                 findEnterButton()?.let { candidates += it }
+                keypadCheckPoint(keypad)?.let { candidates += it }
                 findBottomRightCheck()?.let { candidates += it }
                 candidates += screenBottomRightPoint()
                 candidates += Point(
@@ -919,13 +920,13 @@ class RcAccessibilityService : AccessibilityService() {
                 if (!tapped) {
                     return@withContext PinUnlockResult(
                         false,
-                        "PIN entered, but the submit/check tap failed on $source"
+                        "$purpose entered, but the submit/check tap failed on $source"
                     )
                 }
                 if (isPinScreenActive()) {
                     return@withContext PinUnlockResult(
                         false,
-                        "PIN entered, but the check did not dismiss the PIN screen on $source"
+                        "$purpose entered, but the check did not dismiss the PIN screen on $source"
                     )
                 }
             }
@@ -936,7 +937,7 @@ class RcAccessibilityService : AccessibilityService() {
             }
             return@withContext PinUnlockResult(
                 true,
-                "PIN entered with keypad ($pinMethod, ${secret.length} digits, $lengthNote, $gridNote, $screenNote) on $source"
+                "$purpose entered with keypad ($pinMethod, ${secret.length} digits, $lengthNote, $gridNote, $screenNote) on $source"
             )
         }
 
@@ -944,10 +945,10 @@ class RcAccessibilityService : AccessibilityService() {
             ?: return@withContext PinUnlockResult(
                 false,
                 if (digitsOnly) {
-                    "No numeric PIN keypad or text field was found " +
+                    "No numeric $purpose keypad or text field was found " +
                         "(activity: ${currentActivity ?: currentPackage ?: "unknown"})"
                 } else {
-                    "No PIN/password field was found " +
+                    "No $purpose/password field was found " +
                         "(activity: ${currentActivity ?: currentPackage ?: "unknown"})"
                 }
             )
@@ -967,7 +968,7 @@ class RcAccessibilityService : AccessibilityService() {
         if (!set) {
             return@withContext PinUnlockResult(
                 false,
-                "The PIN/password field did not accept text on $source"
+                "The $purpose/password field did not accept text on $source"
             )
         }
 
@@ -993,7 +994,7 @@ class RcAccessibilityService : AccessibilityService() {
         }
         PinUnlockResult(
             true,
-            "PIN filled into a text field (${secret.length} chars) on $source"
+            "$purpose filled into a text field (${secret.length} chars) on $source"
         )
     }
 

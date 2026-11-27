@@ -41,7 +41,7 @@ const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
-const BUILTIN_VERSION = 7
+const BUILTIN_VERSION = 8
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -370,6 +370,79 @@ const BUILTIN_MACROS: Macro[] = [
       {
         op: 'tapIfExists',
         selector: { contains: 'done', ignoreCase: true }
+      }
+    ]
+  },
+  {
+    id: 'builtin-paytm-pay',
+    name: 'Paytm — pay a UPI ID',
+    appPackage: 'net.one97.paytm',
+    maxAmount: 100,
+    params: {
+      upiId: { type: 'string', required: true },
+      amount: { type: 'number', required: true, default: 1 }
+    },
+    steps: [
+      { op: 'launch', package: 'net.one97.paytm' },
+      { op: 'waitForIdle' },
+      { op: 'appUnlock', package: 'net.one97.paytm' },
+      { op: 'tapIfExists', selector: { contains: 'Skip' } },
+      { op: 'tapIfExists', selector: { desc: 'Back' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'To Mobile' },
+        timeoutMs: 15000
+      },
+      { op: 'tap', selector: { contains: 'To Mobile' } },
+      { op: 'tapIfExists', selector: { hintContains: 'UPI' } },
+      {
+        op: 'waitFor',
+        selector: { focused: true },
+        timeoutMs: 8000
+      },
+      { op: 'setText', selector: { focused: true }, text: '{{upiId}}' },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Verified Details' },
+        timeoutMs: 12000
+      },
+      {
+        op: 'tap',
+        selector: { contains: '{{upiId}}', index: 2 }
+      },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Pay Securely' },
+        timeoutMs: 12000
+      },
+      { op: 'tap', selector: { contains: 'Pay Securely' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Proceed', ignoreCase: true },
+        timeoutMs: 12000
+      },
+      { op: 'enterDigits', text: '{{amount}}' },
+      { op: 'tap', selector: { contains: 'Proceed', ignoreCase: true } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Pay Securely' },
+        timeoutMs: 12000
+      },
+      { op: 'tap', selector: { contains: 'Pay Securely' } },
+      {
+        op: 'enterPin',
+        secretRef: 'paytm-upi-pin',
+        submit: true
+      },
+      {
+        op: 'waitFor',
+        selector: { contains: 'success', ignoreCase: true },
+        timeoutMs: 25000
+      },
+      { op: 'screenshot', label: 'payment' },
+      {
+        op: 'assert',
+        selector: { contains: 'success', ignoreCase: true }
       }
     ]
   }

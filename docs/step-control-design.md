@@ -448,6 +448,7 @@ class OtpNotificationListener : NotificationListenerService() {
 | `longPress` | Long click |
 | `setText` | Focus + set text; `secret: true` redacts |
 | `enterPin` | Enter a PIN/password into a labeled app keypad or text field; use `secretRef` |
+| `enterDigits` | Enter a whole number into an app keypad, e.g. a payment amount |
 | `scroll` / `scrollUntil` | Scroll container / scroll until selector visible |
 | `swipe` | Raw gesture for sliders/carousels |
 | `key` | back / home / recents / enter |
