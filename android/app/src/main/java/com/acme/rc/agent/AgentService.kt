@@ -1,5 +1,6 @@
 package com.acme.rc.agent
 
+import android.Manifest
 import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -9,8 +10,12 @@ import android.app.Service
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -18,11 +23,15 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
+import android.view.View
 import android.view.accessibility.AccessibilityEvent
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.acme.rc.MainActivity
+import com.acme.rc.R
 import com.acme.rc.accessibility.RcAccessibilityService
 import com.acme.rc.admin.RcDeviceAdminReceiver
 import com.acme.rc.device.AppUnlockStore
@@ -120,6 +129,7 @@ class AgentService : Service() {
     private val cancelledRuns = mutableSetOf<String>()
     private val promptDeferred = mutableMapOf<String, CompletableDeferred<String>>()
     private val runVars = mutableMapOf<String, String>()
+    private val notifyIds = AtomicInteger(5000)
     private var currentRunId: String? = null
     private var currentSessionId: String? = null
     private var recordAppPackage: String? = null
@@ -396,6 +406,29 @@ class AgentService : Service() {
                 val promptId = msg.optString("promptId")
                 promptDeferred.remove(promptId)?.complete(msg.optString("value"))
                 sendResult(cmdId, true)
+                return
+            }
+            "notify" -> {
+                scope.launch {
+                    try {
+                        postDeviceNotification(msg)
+                        sendResult(
+                            cmdId,
+                            true,
+                            null,
+                            "Notification posted to the device",
+                            "notify"
+                        )
+                    } catch (t: Throwable) {
+                        sendResult(
+                            cmdId,
+                            false,
+                            describeError(t),
+                            null,
+                            "notify"
+                        )
+                    }
+                }
                 return
             }
             "setDevicePin" -> {
@@ -844,7 +877,8 @@ class AgentService : Service() {
         cmdId: String,
         ok: Boolean,
         error: String? = null,
-        detail: String? = null
+        detail: String? = null,
+        action: String? = null
     ) {
         val json = JSONObject()
             .put("t", "actionResult")
@@ -852,6 +886,7 @@ class AgentService : Service() {
             .put("ok", ok)
         if (error != null) json.put("error", error)
         if (detail != null) json.put("detail", detail)
+        if (action != null) json.put("action", action)
         socket?.send(json.toString())
     }
 
@@ -1689,6 +1724,135 @@ class AgentService : Service() {
     // -----------------------------------------------------------------
     // Notification
     // -----------------------------------------------------------------
+
+    /**
+     * Posts a notification card sent from the admin panel. Sound and vibration
+     * are channel properties on Android 8+, so each combination gets its own
+     * channel. The channel is immutable, which keeps the alert behavior stable.
+     */
+    private fun postDeviceNotification(msg: JSONObject) {
+        val hasPermission =
+            Build.VERSION.SDK_INT < 33 ||
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) {
+            throw IllegalStateException(
+                "Notification permission is not granted on the device"
+            )
+        }
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+            throw IllegalStateException(
+                "Notifications are disabled for RC Agent on the device"
+            )
+        }
+
+        val appName = msg.optString("appName").trim().take(40).ifBlank { "RC Agent" }
+        val title = msg.optString("title").trim().take(80)
+        val subtitle = msg.optString("subtitle").trim().take(100)
+        val message = msg.optString("message").trim().take(500)
+        if (title.isBlank()) {
+            throw IllegalArgumentException("Notification title is required")
+        }
+        if (message.isBlank()) {
+            throw IllegalArgumentException("Notification message is required")
+        }
+        val sound = msg.optBoolean("sound", true)
+        val vibration = msg.optBoolean("vibration", true)
+
+        val night =
+            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
+        val appColor = if (night) 0xFF93C5FD.toInt() else 0xFF2563EB.toInt()
+        val titleColor = if (night) 0xFFF2F4F7.toInt() else 0xFF101828.toInt()
+        val subtitleColor = if (night) 0xFF98A2B3.toInt() else 0xFF667085.toInt()
+        val messageColor = if (night) 0xFFD0D5DD.toInt() else 0xFF344054.toInt()
+
+        val views = RemoteViews(packageName, R.layout.notification_card).apply {
+            setTextViewText(R.id.notify_app_name, appName)
+            setTextViewText(R.id.notify_title, title)
+            setTextViewText(R.id.notify_subtitle, subtitle)
+            setTextViewText(R.id.notify_message, message)
+            setViewVisibility(
+                R.id.notify_subtitle,
+                if (subtitle.isBlank()) View.GONE else View.VISIBLE
+            )
+            setTextColor(R.id.notify_app_name, appColor)
+            setTextColor(R.id.notify_title, titleColor)
+            setTextColor(R.id.notify_subtitle, subtitleColor)
+            setTextColor(R.id.notify_message, messageColor)
+        }
+
+        val openIntent = PendingIntent.getActivity(
+            this,
+            2,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val notification = NotificationCompat.Builder(this, notifyChannel(sound, vibration))
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setSubText(appName)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(views)
+            .setCustomBigContentView(views)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setAutoCancel(true)
+            .setWhen(System.currentTimeMillis())
+            .setShowWhen(true)
+            .setContentIntent(openIntent)
+            .build()
+
+        NotificationManagerCompat.from(this).notify(notifyIds.incrementAndGet(), notification)
+    }
+
+    private fun notifyChannel(sound: Boolean, vibration: Boolean): String {
+        val id = when {
+            sound && vibration -> "rc_notify_sound_vibration"
+            sound -> "rc_notify_sound"
+            vibration -> "rc_notify_vibration"
+            else -> "rc_notify_silent"
+        }
+        val manager = getSystemService(NotificationManager::class.java)
+        if (manager.getNotificationChannel(id) != null) return id
+
+        val name = when {
+            sound && vibration -> "Device notifications — sound & vibration"
+            sound -> "Device notifications — sound"
+            vibration -> "Device notifications — vibration"
+            else -> "Device notifications — silent"
+        }
+        val importance = if (sound || vibration) {
+            NotificationManager.IMPORTANCE_HIGH
+        } else {
+            NotificationManager.IMPORTANCE_DEFAULT
+        }
+        val channel = NotificationChannel(id, name, importance).apply {
+            description = "Notifications sent from the RC admin panel"
+            setShowBadge(true)
+            enableVibration(vibration)
+            if (vibration) {
+                vibrationPattern = longArrayOf(0, 220, 160, 220)
+            }
+            if (sound) {
+                setSound(
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+            } else {
+                setSound(null, null)
+            }
+            enableLights(false)
+        }
+        manager.createNotificationChannel(channel)
+        return id
+    }
 
     private fun createChannel() {
         val manager = getSystemService(NotificationManager::class.java)

@@ -107,6 +107,10 @@ right-side activity drawer:
   biometrics, then enters a per-app credential if one is stored, otherwise the
   device unlock credential. MIUI/POCO App lock uses the device credential, so
   the per-app field can stay empty.
+- **Notify** — compose an app name, title, message, and optional subtitle
+  with **Sound** and **Vibration** toggles, then press **Notify device** to
+  post a heads-up notification card to the phone's notification shade. The
+  result is shown in the panel and the send is recorded in Activity.
 - **Phone** — SIM details and numbers, inbox messages with a compact **Money**
   band for the latest debit/credit/balance SMS, direct SMS sending, and
   carrier-USSD call forwarding (all calls, no answer, busy, unreachable, or a

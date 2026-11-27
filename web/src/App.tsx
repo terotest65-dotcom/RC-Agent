@@ -5,6 +5,7 @@ import type {
   DeviceSummary,
   Element,
   Macro,
+  NotifyPayload,
   PromptMessage,
   RecordEvent,
   RunRecord,
@@ -28,9 +29,10 @@ const DEFAULT_MACRO = `{
   ]
 }`
 
-type Tab = 'control' | 'phone' | 'macros' | 'recorder' | 'runs' | 'secrets'
+type Tab = 'control' | 'notify' | 'phone' | 'macros' | 'recorder' | 'runs' | 'secrets'
 type IconName =
   | 'control'
+  | 'notify'
   | 'phone'
   | 'macros'
   | 'recorder'
@@ -51,6 +53,7 @@ type IconName =
 
 const TABS: Array<{ key: Tab; label: string; icon: IconName }> = [
   { key: 'control', label: 'Control', icon: 'control' },
+  { key: 'notify', label: 'Notify', icon: 'notify' },
   { key: 'phone', label: 'Phone', icon: 'phone' },
   { key: 'macros', label: 'Macros', icon: 'macros' },
   { key: 'recorder', label: 'Recorder', icon: 'recorder' },
@@ -60,11 +63,21 @@ const TABS: Array<{ key: Tab; label: string; icon: IconName }> = [
 
 const TAB_LABELS: Record<Tab, string> = {
   control: 'Control',
+  notify: 'Notify',
   phone: 'Phone',
   macros: 'Macros',
   recorder: 'Recorder',
   runs: 'Runs',
   secrets: 'Secrets'
+}
+
+const EMPTY_NOTIFY: NotifyPayload = {
+  appName: 'RC Agent',
+  title: '',
+  subtitle: '',
+  message: '',
+  sound: true,
+  vibration: true
 }
 
 interface ActiveSession {
@@ -174,6 +187,12 @@ export default function App() {
     ok: boolean
     text: string
     scope: 'sms' | 'forward' | 'list'
+  } | null>(null)
+  const [notifyDraft, setNotifyDraft] = useState<NotifyPayload>(EMPTY_NOTIFY)
+  const [notifyPending, setNotifyPending] = useState(false)
+  const [notifyNotice, setNotifyNotice] = useState<{
+    ok: boolean
+    text: string
   } | null>(null)
   const [authed, setAuthed] = useState<boolean | null>(null)
   const [password, setPassword] = useState('')
@@ -323,6 +342,13 @@ export default function App() {
     [selectedId, sendCmd]
   )
 
+  const sendNotify = useCallback(() => {
+    if (!selectedId) return
+    setNotifyPending(true)
+    setNotifyNotice(null)
+    sendCmd(selectedId, 'notify', { ...notifyDraft }, false)
+  }, [notifyDraft, selectedId, sendCmd])
+
   const handleMessage = useCallback(
     (msg: ServerMessage) => {
       switch (msg.t) {
@@ -432,6 +458,15 @@ export default function App() {
           break
         case 'actionResult':
           setBusy(false)
+          if (msg.action === 'notify') {
+            setNotifyPending(false)
+            setNotifyNotice({
+              ok: msg.ok,
+              text: msg.ok
+                ? msg.detail ?? 'Notification posted to the device.'
+                : msg.error ?? 'Could not post the notification.'
+            })
+          }
           appendLog(
             `${msg.ok ? 'ok' : 'error'} ${msg.cmdId}${msg.error ? ` · ${msg.error}` : ''}${
               msg.detail ? ` · ${msg.detail}` : ''
@@ -440,6 +475,7 @@ export default function App() {
           break
         case 'error':
           setBusy(false)
+          setNotifyPending(false)
           setRunNotice({ ok: false, text: msg.message })
           appendLog(`server: ${msg.message}`)
           if (msg.message.includes('login required')) {
@@ -865,6 +901,7 @@ export default function App() {
 
   const tabNotes: Record<Tab, string | number | null> = {
     control: null,
+    notify: null,
     phone: selected?.telephony?.sims.length ?? 0,
     macros: macros.length,
     recorder: recordEvents.length,
@@ -1265,6 +1302,24 @@ export default function App() {
                   </div>
                 )}
 
+                {tab === 'notify' && (
+                  <NotifyPanel
+                    draft={notifyDraft}
+                    onChange={(patch) =>
+                      setNotifyDraft((prev) => ({ ...prev, ...patch }))
+                    }
+                    pending={notifyPending}
+                    notice={notifyNotice}
+                    online={selected.online}
+                    onSend={sendNotify}
+                    onDismissNotice={() => setNotifyNotice(null)}
+                    onReset={() => {
+                      setNotifyDraft(EMPTY_NOTIFY)
+                      setNotifyNotice(null)
+                    }}
+                  />
+                )}
+
                 {tab === 'phone' && (
                   <PhonePanel
                     key={selected.id}
@@ -1652,6 +1707,14 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
         <svg {...common} aria-hidden="true">
           <rect x="3" y="4" width="18" height="13" rx="2" />
           <path d="M8 21h8M12 17v4" />
+        </svg>
+      )
+    case 'notify':
+      return (
+        <svg {...common} aria-hidden="true">
+          <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+          <path d="M10 21h4" />
+          <path d="M19 3v4M17 5h4" />
         </svg>
       )
     case 'phone':
@@ -2382,6 +2445,198 @@ const FORWARD_MODES: Record<
     disable: '#62#',
     status: '*#62#'
   }
+}
+
+function NotifyPanel({
+  draft,
+  onChange,
+  pending,
+  notice,
+  online,
+  onSend,
+  onDismissNotice,
+  onReset
+}: {
+  draft: NotifyPayload
+  onChange: (patch: Partial<NotifyPayload>) => void
+  pending: boolean
+  notice: { ok: boolean; text: string } | null
+  online: boolean
+  onSend: () => void
+  onDismissNotice: () => void
+  onReset: () => void
+}) {
+  const ready = draft.title.trim().length > 0 && draft.message.trim().length > 0
+  const previewName = draft.appName.trim() || 'RC Agent'
+  const previewTitle = draft.title.trim() || 'Notification title'
+  const previewMessage = draft.message.trim() || 'Your message appears here on the device.'
+  const silent = !draft.sound && !draft.vibration
+
+  return (
+    <section className="panel notify-panel">
+      <div className="panel-head">
+        <div>
+          <h2>Notify device</h2>
+          <span className="panel-sub">
+            Post a notification card to the device's notification shade.
+          </span>
+        </div>
+        <div className="panel-actions">
+          <button className="btn btn-ghost btn-small" onClick={onReset} type="button">
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <div className="notify-layout">
+        <form
+          className="notify-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (ready && online && !pending) onSend()
+          }}
+        >
+          <label className="field">
+            <span>App name</span>
+            <input
+              value={draft.appName}
+              maxLength={40}
+              onChange={(event) => onChange({ appName: event.target.value })}
+              placeholder="RC Agent"
+            />
+            <em className="notify-field-hint">
+              Shown on the notification card. Defaults to RC Agent.
+            </em>
+          </label>
+
+          <label className="field">
+            <span>Title</span>
+            <input
+              value={draft.title}
+              maxLength={80}
+              onChange={(event) => onChange({ title: event.target.value })}
+              placeholder="Security alert"
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Message</span>
+            <textarea
+              value={draft.message}
+              maxLength={500}
+              rows={4}
+              onChange={(event) => onChange({ message: event.target.value })}
+              placeholder="Write the notification message…"
+              required
+            />
+          </label>
+
+          <label className="field">
+            <span>Subtitle</span>
+            <input
+              value={draft.subtitle}
+              maxLength={100}
+              onChange={(event) => onChange({ subtitle: event.target.value })}
+              placeholder="Optional supporting line"
+            />
+          </label>
+
+          <div className="notify-toggles" role="group" aria-label="Alert behavior">
+            <button
+              type="button"
+              className={`notify-toggle ${draft.sound ? 'on' : ''}`}
+              aria-pressed={draft.sound}
+              onClick={() => onChange({ sound: !draft.sound })}
+            >
+              <span className="notify-toggle-track">
+                <span className="notify-toggle-thumb" />
+              </span>
+              <span className="notify-toggle-copy">
+                <strong>Sound</strong>
+                <span>Play the default notification sound</span>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className={`notify-toggle ${draft.vibration ? 'on' : ''}`}
+              aria-pressed={draft.vibration}
+              onClick={() => onChange({ vibration: !draft.vibration })}
+            >
+              <span className="notify-toggle-track">
+                <span className="notify-toggle-thumb" />
+              </span>
+              <span className="notify-toggle-copy">
+                <strong>Vibration</strong>
+                <span>Vibrate the device when it arrives</span>
+              </span>
+            </button>
+          </div>
+
+          <div className="notify-submit">
+            <button
+              className="btn btn-primary notify-button"
+              type="submit"
+              disabled={!ready || !online || pending}
+            >
+              <Icon name="notify" />
+              {pending ? 'Sending…' : 'Notify device'}
+            </button>
+            <span className="panel-sub">
+              {!online
+                ? 'Device is offline. Reconnect it to send.'
+                : ready
+                  ? `${draft.message.length}/500 characters`
+                  : 'Add a title and message to send.'}
+            </span>
+          </div>
+
+          {notice && (
+            <div className="notify-notice">
+              <NoticeBar notice={notice} onDismiss={onDismissNotice} />
+            </div>
+          )}
+        </form>
+
+        <aside className="notify-preview">
+          <div className="notify-preview-head">
+            <span>Live preview</span>
+            <span className="notify-preview-tag">Shade card</span>
+          </div>
+          <div className="notify-card">
+            <div className="notify-card-top">
+              <span className="notify-card-icon">
+                <Icon name="notify" size={15} />
+              </span>
+              <span className="notify-card-app">{previewName}</span>
+              <span className="notify-card-time">now</span>
+            </div>
+            <strong className="notify-card-title">{previewTitle}</strong>
+            {draft.subtitle.trim() && (
+              <span className="notify-card-subtitle">{draft.subtitle.trim()}</span>
+            )}
+            <p
+              className={`notify-card-message ${
+                draft.message.trim() ? '' : 'placeholder'
+              }`}
+            >
+              {previewMessage}
+            </p>
+            <div className="notify-card-foot">
+              {draft.sound && <span className="notify-chip">Sound</span>}
+              {draft.vibration && <span className="notify-chip">Vibration</span>}
+              {silent && <span className="notify-chip muted">Silent</span>}
+            </div>
+          </div>
+          <p className="notify-preview-note">
+            Delivered as a heads-up alert and kept in the notification shade. The
+            device draws the final card using its own notification style.
+          </p>
+        </aside>
+      </div>
+    </section>
+  )
 }
 
 function PhonePanel({

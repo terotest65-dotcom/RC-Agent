@@ -182,6 +182,18 @@ export interface ActionResultMessage {
   ok: boolean
   error?: string
   detail?: string | null
+  /** Present when a command wants to correlate an async result in the UI. */
+  action?: string
+}
+
+export interface NotifyPayload {
+  /** Name shown on the notification card. Falls back to RC Agent. */
+  appName: string
+  title: string
+  subtitle: string
+  message: string
+  sound: boolean
+  vibration: boolean
 }
 
 export interface ProbeMessage {
@@ -480,6 +492,7 @@ export type ActionName =
   | 'startRecording'
   | 'stopRecording'
   | 'promptResult'
+  | 'notify'
 
 export interface CommandMessage {
   t: 'cmd'
