@@ -442,6 +442,7 @@ class OtpNotificationListener : NotificationListenerService() {
 | `launch` | Start an app or open a deep link/URI |
 | `appUnlock` | Run the app-lock flow for a package; no-op when already unlocked |
 | `waitFor` | Poll until a selector appears |
+| `waitForFirst` | Poll until any selector in a list appears |
 | `waitForIdle` | Wait until no content-change events for N ms |
 | `tap` | Click a selector |
 | `tapIfExists` | Optional click (ads, permission dialogs, "Skip") |

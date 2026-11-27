@@ -1090,6 +1090,25 @@ class AgentService : Service() {
                     return StepResult("failed", "timeout waiting for selector")
                 }
             }
+            "waitForFirst" -> {
+                val selectors = step.selectors
+                if (selectors.isNullOrEmpty()) {
+                    return StepResult("failed", "waitForFirst requires selectors")
+                }
+                val timeout = if (step.timeoutMs > 0) step.timeoutMs else 5_000L
+                val deadline = SystemClock.elapsedRealtime() + timeout
+                var match = selectors.firstOrNull { service.exists(it) }
+                while (match == null && SystemClock.elapsedRealtime() < deadline) {
+                    delay(250)
+                    match = selectors.firstOrNull { service.exists(it) }
+                }
+                if (match == null) {
+                    return StepResult(
+                        "failed",
+                        "none of the waitForFirst selectors appeared"
+                    )
+                }
+            }
             "waitForIdle" -> delay(500)
             "waitForOtp" -> {
                 val timeout = if (step.timeoutMs > 0) step.timeoutMs else 60_000L

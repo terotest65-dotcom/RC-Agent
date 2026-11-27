@@ -221,6 +221,7 @@ export type MacroOp =
   | 'launch'
   | 'appUnlock'
   | 'waitFor'
+  | 'waitForFirst'
   | 'waitForIdle'
   | 'waitForOtp'
   | 'tap'
