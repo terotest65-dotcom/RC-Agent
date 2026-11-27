@@ -893,7 +893,10 @@ class RcAccessibilityService : AccessibilityService() {
             val endLength = pinFieldLength()
             if (submit) {
                 delay(200)
-                val enter = keypad.enter ?: findEnterButton() ?: findBottomRightCheck()
+                val enter = keypad.enter
+                    ?: findEnterButton()
+                    ?: keypadCheckPoint(keypad)
+                    ?: findBottomRightCheck()
                     ?: return@withContext PinUnlockResult(
                         false,
                         "PIN entered, but no submit/check button was found on $source"
@@ -1751,6 +1754,23 @@ class RcAccessibilityService : AccessibilityService() {
      * or stable id. The UPI PIN screen puts the submit control in the lower
      * right; choose the lowest clickable target there that is not a digit key.
      */
+    /**
+     * The standard NPCI keypad puts the check at the bottom-right cell of the
+     * 3x4 digit grid. Some PhonePe builds draw it without an accessible node,
+     * so derive the point from the digit grid.
+     */
+    private fun keypadCheckPoint(keypad: KeypadScan): Point? {
+        val grid = keypad.grid ?: return null
+        if (grid.width() < 100 || grid.height() < 100) return null
+        val cellWidth = grid.width() / 3f
+        val cellHeight = grid.height() / 4f
+        val x = (grid.right - cellWidth / 2).toInt()
+        val y = (grid.bottom - cellHeight / 2).toInt()
+        val (width, height) = displaySize()
+        if (x !in 0 until width || y !in 0 until height) return null
+        return Point(x, y)
+    }
+
     private fun findBottomRightCheck(): Point? {
         val (width, height) = displaySize()
         val minSize = (20 * resources.displayMetrics.density).toInt()
