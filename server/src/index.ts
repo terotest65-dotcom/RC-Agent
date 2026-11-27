@@ -41,7 +41,7 @@ const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
-const BUILTIN_VERSION = 10
+const BUILTIN_VERSION = 11
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -223,11 +223,14 @@ const BUILTIN_MACROS: Macro[] = [
         text: '{{upiId}}'
       },
       {
-        op: 'waitFor',
-        selector: { contains: 'Verify & Send Money' },
+        op: 'tapFirst',
+        selectors: [
+          { hintContains: 'Amount' },
+          { contains: 'Verify & Send Money' },
+          { contains: '{{upiId}}', index: 2 }
+        ],
         timeoutMs: 12000
       },
-      { op: 'tap', selector: { contains: 'Verify & Send Money' } },
       {
         op: 'waitFor',
         selector: { contains: 'PROCEED' },

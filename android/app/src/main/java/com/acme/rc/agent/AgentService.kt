@@ -945,6 +945,7 @@ class AgentService : Service() {
         val op: String,
         val pkg: String?,
         val selector: Selector?,
+        val selectors: List<Selector>?,
         val text: String?,
         val timeoutMs: Long,
         val expect: Selector?,
@@ -1109,6 +1110,29 @@ class AgentService : Service() {
                 if (!service.tapSelector(selector)) return StepResult("failed", "tap failed")
                 delay(600)
             }
+            "tapFirst" -> {
+                val selectors = step.selectors
+                if (selectors.isNullOrEmpty()) {
+                    return StepResult("failed", "tapFirst requires selectors")
+                }
+                val timeout = if (step.timeoutMs > 0) step.timeoutMs else 5_000L
+                val deadline = SystemClock.elapsedRealtime() + timeout
+                var match = selectors.firstOrNull { service.exists(it) }
+                while (match == null && SystemClock.elapsedRealtime() < deadline) {
+                    delay(250)
+                    match = selectors.firstOrNull { service.exists(it) }
+                }
+                if (match == null) {
+                    return StepResult(
+                        "failed",
+                        "none of the tapFirst selectors appeared"
+                    )
+                }
+                if (!service.tapSelector(match)) {
+                    return StepResult("failed", "tap failed")
+                }
+                delay(600)
+            }
             "setText" -> {
                 val selector = step.selector
                     ?: return StepResult("failed", "setText requires selector")
@@ -1254,6 +1278,11 @@ class AgentService : Service() {
             op = obj.optString("op"),
             pkg = resolve(obj.optString("package").takeIf { it.isNotBlank() }, params),
             selector = parseSelector(obj.optJSONObject("selector"), params),
+            selectors = obj.optJSONArray("selectors")?.let { array ->
+                (0 until array.length())
+                    .mapNotNull { parseSelector(array.optJSONObject(it), params) }
+                    .takeIf { it.isNotEmpty() }
+            },
             text = resolve(obj.optString("text").takeIf { it.isNotBlank() }, params),
             timeoutMs = obj.optLong("timeoutMs", 5000L),
             expect = parseSelector(obj.optJSONObject("expect"), params),

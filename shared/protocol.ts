@@ -225,6 +225,7 @@ export type MacroOp =
   | 'waitForOtp'
   | 'tap'
   | 'tapIfExists'
+  | 'tapFirst'
   | 'setText'
   | 'enterPin'
   | 'enterDigits'
@@ -238,6 +239,7 @@ export interface MacroStep {
   op: MacroOp
   package?: string
   selector?: Selector
+  selectors?: Selector[]
   text?: string
   timeoutMs?: number
   expect?: Selector

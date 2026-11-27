@@ -445,6 +445,7 @@ class OtpNotificationListener : NotificationListenerService() {
 | `waitForIdle` | Wait until no content-change events for N ms |
 | `tap` | Click a selector |
 | `tapIfExists` | Optional click (ads, permission dialogs, "Skip") |
+| `tapFirst` | Click the first selector that appears, e.g. saved vs new payee |
 | `longPress` | Long click |
 | `setText` | Focus + set text; `secret: true` redacts |
 | `enterPin` | Enter a PIN/password into a labeled app keypad or text field; use `secretRef` |
