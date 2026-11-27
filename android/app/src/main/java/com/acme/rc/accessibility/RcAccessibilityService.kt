@@ -895,15 +895,37 @@ class RcAccessibilityService : AccessibilityService() {
             val endLength = pinFieldLength()
             if (submit) {
                 delay(200)
-                val enter = keypad.enter
-                    ?: findEnterButton()
-                    ?: keypadCheckPoint(keypad)
-                    ?: findBottomRightCheck()
-                    ?: screenBottomRightPoint()
-                if (!tapAndAwait(enter.x, enter.y)) {
+                val (screenW, screenH) = displaySize()
+                val candidates = mutableListOf<Point>()
+                keypad.enter?.let { candidates += it }
+                findEnterButton()?.let { candidates += it }
+                keypadCheckPoint(keypad)?.let { candidates += it }
+                findBottomRightCheck()?.let { candidates += it }
+                candidates += screenBottomRightPoint()
+                candidates += Point(
+                    (screenW * 0.9f).toInt(),
+                    (screenH * 0.95f).toInt()
+                )
+
+                val seen = mutableSetOf<String>()
+                var tapped = false
+                for (point in candidates) {
+                    if (!seen.add("${point.x},${point.y}")) continue
+                    if (!tapAndAwait(point.x, point.y)) continue
+                    tapped = true
+                    delay(1_200)
+                    if (!isPinScreenActive()) break
+                }
+                if (!tapped) {
                     return@withContext PinUnlockResult(
                         false,
                         "PIN entered, but the submit/check tap failed on $source"
+                    )
+                }
+                if (isPinScreenActive()) {
+                    return@withContext PinUnlockResult(
+                        false,
+                        "PIN entered, but the check did not dismiss the PIN screen on $source"
                     )
                 }
             }
@@ -1757,6 +1779,16 @@ class RcAccessibilityService : AccessibilityService() {
      * or stable id. The UPI PIN screen puts the submit control in the lower
      * right; choose the lowest clickable target there that is not a digit key.
      */
+    private fun isPinScreenActive(): Boolean {
+        val activity = currentActivity.orEmpty()
+        if (activity.contains("GetCredential", true) ||
+            activity.contains("pinactivitycomponent", true)
+        ) {
+            return true
+        }
+        return scanKeypad(activeOnly = true).digits.size >= 10
+    }
+
     /**
      * The standard NPCI keypad puts the check at the bottom-right cell of the
      * 3x4 digit grid. Some PhonePe builds draw it without an accessible node,
