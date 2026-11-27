@@ -91,6 +91,7 @@ data class Selector(
     val hint: String? = null,
     val hintContains: String? = null,
     val focused: Boolean? = null,
+    val editable: Boolean? = null,
     val className: String? = null,
     /** Pick the Nth match in tree order, 1-based. Defaults to the first. */
     val index: Int = 1,

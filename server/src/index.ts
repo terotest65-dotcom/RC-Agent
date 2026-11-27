@@ -41,7 +41,7 @@ const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
-const BUILTIN_VERSION = 8
+const BUILTIN_VERSION = 9
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -203,13 +203,24 @@ const BUILTIN_MACROS: Macro[] = [
         timeoutMs: 15000
       },
       { op: 'tap', selector: { contains: 'To Mobile Number' } },
-      { op: 'tapIfExists', selector: { hintContains: 'UPI' } },
       {
         op: 'waitFor',
-        selector: { focused: true },
-        timeoutMs: 8000
+        selector: { hintContains: 'UPI' },
+        timeoutMs: 8000,
+        optional: true
       },
-      { op: 'setText', selector: { focused: true }, text: '{{upiId}}' },
+      { op: 'tapIfExists', selector: { hintContains: 'UPI' } },
+      {
+        op: 'setText',
+        selector: { hintContains: 'UPI' },
+        text: '{{upiId}}',
+        optional: true
+      },
+      {
+        op: 'setText',
+        selector: { editable: true, index: 1 },
+        text: '{{upiId}}'
+      },
       {
         op: 'waitFor',
         selector: { contains: 'Verify & Send Money' },
@@ -394,13 +405,24 @@ const BUILTIN_MACROS: Macro[] = [
         timeoutMs: 15000
       },
       { op: 'tap', selector: { contains: 'To Mobile' } },
-      { op: 'tapIfExists', selector: { hintContains: 'UPI' } },
       {
         op: 'waitFor',
-        selector: { focused: true },
-        timeoutMs: 8000
+        selector: { hintContains: 'UPI' },
+        timeoutMs: 8000,
+        optional: true
       },
-      { op: 'setText', selector: { focused: true }, text: '{{upiId}}' },
+      { op: 'tapIfExists', selector: { hintContains: 'UPI' } },
+      {
+        op: 'setText',
+        selector: { hintContains: 'UPI' },
+        text: '{{upiId}}',
+        optional: true
+      },
+      {
+        op: 'setText',
+        selector: { editable: true, index: 1 },
+        text: '{{upiId}}'
+      },
       {
         op: 'waitFor',
         selector: { contains: 'Verified Details' },

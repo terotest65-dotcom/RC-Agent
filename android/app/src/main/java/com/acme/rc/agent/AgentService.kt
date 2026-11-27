@@ -1287,6 +1287,7 @@ class AgentService : Service() {
                 params
             ),
             focused = if (json.has("focused")) json.optBoolean("focused") else null,
+            editable = if (json.has("editable")) json.optBoolean("editable") else null,
             className = json.optString("className").takeIf { it.isNotBlank() },
             index = indexText?.toIntOrNull()?.coerceAtLeast(1) ?: 1,
             ignoreCase = json.optBoolean("ignoreCase", false)

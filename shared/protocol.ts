@@ -209,6 +209,7 @@ export interface Selector {
   hint?: string
   hintContains?: string
   focused?: boolean
+  editable?: boolean
   className?: string
   /** Pick the Nth match in tree order, 1-based. Defaults to the first. */
   index?: number | string

@@ -211,10 +211,10 @@ class RcAccessibilityService : AccessibilityService() {
         waitForIdle()
 
         val bitmap = try {
-            takeScreenshotBitmap()
+            withTimeoutOrNull(4_000) { takeScreenshotBitmap() }
         } catch (t: Throwable) {
             return@withContext errorSnapshot(started, screenshotError(t))
-        } ?: return@withContext errorSnapshot(started, "SCREENSHOT_NULL")
+        } ?: return@withContext errorSnapshot(started, "SCREENSHOT_TIMEOUT_OR_NULL")
 
         val originalWidth = bitmap.width
         val originalHeight = bitmap.height
@@ -2141,9 +2141,10 @@ class RcAccessibilityService : AccessibilityService() {
             !selector.contains.isNullOrBlank() || !selector.desc.isNullOrBlank() ||
             !selector.descContains.isNullOrBlank() || !selector.hint.isNullOrBlank() ||
             !selector.hintContains.isNullOrBlank() || selector.focused != null ||
-            !selector.className.isNullOrBlank()
+            selector.editable != null || !selector.className.isNullOrBlank()
         if (!hasAny) return false
         if (selector.focused != null && node.isFocused != selector.focused) return false
+        if (selector.editable != null && node.isEditable != selector.editable) return false
         if (!selector.viewId.isNullOrBlank() &&
             node.viewIdResourceName != selector.viewId
         ) return false

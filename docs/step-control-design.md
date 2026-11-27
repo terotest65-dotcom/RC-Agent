@@ -505,7 +505,7 @@ Every mutating step should have an `expect`. If it has none, the engine marks it
 
 Priority: `viewId` → `text`/`textContains`/`regex` → `contentDescription` → `hint` → relative position → bounds (last resort) → OCR (not in v1).
 
-A selector can be a combination of `viewId`, `text`, `contains`, `desc`, `descContains`, `hint`, `hintContains`, `focused`, and `className`. Text matching collapses line breaks and repeated spaces, so a label rendered over two lines still matches its single-line form. Use `contains` for visible text, `descContains` for content descriptions, and `hintContains` for form-field hints. Set `"ignoreCase": true` to match any text without regard to case. `"focused": true` targets the currently focused field, which is useful after a form screen opens the keyboard.
+A selector can be a combination of `viewId`, `text`, `contains`, `desc`, `descContains`, `hint`, `hintContains`, `focused`, `editable`, and `className`. Text matching collapses line breaks and repeated spaces, so a label rendered over two lines still matches its single-line form. Use `contains` for visible text, `descContains` for content descriptions, and `hintContains` for form-field hints. Set `"ignoreCase": true` to match any text without regard to case. `"focused": true` targets the currently focused field, and `"editable": true` targets the first editable field, which is useful for search and amount inputs.
 
 `index` picks the Nth match in accessibility-tree order, **1-based**; the default is the first match. It is resolved through macro params, so a macro can tap the first or second bank without hard-coding a name:
 
