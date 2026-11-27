@@ -922,7 +922,8 @@ class RcAccessibilityService : AccessibilityService() {
                 delay(200)
             }
             val endLength = pinFieldLength()
-            if (startLength != null && endLength != null &&
+            val verifyField = purpose == "PIN"
+            if (verifyField && startLength != null && endLength != null &&
                 endLength - startLength != secret.length
             ) {
                 return@withContext PinUnlockResult(
@@ -967,10 +968,10 @@ class RcAccessibilityService : AccessibilityService() {
                     )
                 }
             }
-            val lengthNote = if (startLength != null && endLength != null) {
-                "field $startLength→$endLength"
-            } else {
-                "field unreadable"
+            val lengthNote = when {
+                !verifyField -> "field unchecked"
+                startLength != null && endLength != null -> "field $startLength→$endLength"
+                else -> "field unreadable"
             }
             return@withContext PinUnlockResult(
                 true,
