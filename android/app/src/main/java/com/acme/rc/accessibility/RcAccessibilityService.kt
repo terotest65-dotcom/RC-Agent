@@ -1315,8 +1315,7 @@ class RcAccessibilityService : AccessibilityService() {
         depth: Int
     ): Boolean {
         if (node == null || depth > 60) return false
-        val label = (node.text?.toString() ?: node.contentDescription?.toString())
-            ?.lowercase()
+        val label = labelOf(node)?.lowercase()
         if (label != null && terms.any { label.contains(it) }) return true
         for (i in 0 until node.childCount) {
             val child = try {
@@ -1368,9 +1367,7 @@ class RcAccessibilityService : AccessibilityService() {
         depth: Int
     ): Point? {
         if (node == null || depth > 60) return null
-        val label = (node.text?.toString() ?: node.contentDescription?.toString())
-            ?.trim()
-            ?.lowercase()
+        val label = labelOf(node)?.lowercase()
         if (label != null && terms.any { label.contains(it) }) {
             clickableBounds(node, requireClickable = true)?.let {
                 return Point(it.centerX(), it.centerY())
@@ -1615,9 +1612,7 @@ class RcAccessibilityService : AccessibilityService() {
         depth: Int = 0
     ) {
         if (node == null || depth > 60) return
-        val label = (node.text?.toString() ?: node.contentDescription?.toString())
-            ?.trim()
-            ?.lowercase()
+        val label = labelOf(node)?.lowercase()
         val digit = digitFromLabel(label) ?: digitFromViewId(node.viewIdResourceName)
 
         if (digit != null) {
@@ -1699,6 +1694,13 @@ class RcAccessibilityService : AccessibilityService() {
     private fun findPinSwitch(): Point? =
         findClickableLabel(PIN_SWITCH_LABELS)
 
+    private fun labelOf(node: AccessibilityNodeInfo): String? {
+        val text = node.text?.toString()?.trim()
+        if (!text.isNullOrEmpty()) return text
+        val description = node.contentDescription?.toString()?.trim()
+        return description?.takeIf { it.isNotEmpty() }
+    }
+
     private fun findEnterButton(): Point? {
         val active = activeRoot()
         if (active != null) {
@@ -1721,9 +1723,7 @@ class RcAccessibilityService : AccessibilityService() {
         allowId: Boolean
     ): Point? {
         if (node == null || depth > 60) return null
-        val label = (node.text?.toString() ?: node.contentDescription?.toString())
-            ?.trim()
-            ?.lowercase()
+        val label = labelOf(node)?.lowercase()
         val byLabel = label != null && (
             label in ENTER_LABELS ||
                 (allowContains && ENTER_TERMS.any { label.contains(it) })
@@ -1752,22 +1752,27 @@ class RcAccessibilityService : AccessibilityService() {
      * right; choose the lowest clickable target there that is not a digit key.
      */
     private fun findBottomRightCheck(): Point? {
-        val root = activeRoot() ?: return null
         val (width, height) = displaySize()
-        val minSize = (32 * resources.displayMetrics.density).toInt()
-        var best: Rect? = null
+        val minSize = (20 * resources.displayMetrics.density).toInt()
+        val roots = mutableListOf<AccessibilityNodeInfo>()
+        activeRoot()?.let { roots += it }
+        roots += orderedWindowRoots()
         val seen = mutableSetOf<String>()
-        collectBottomRight(root, 0, width, height, minSize) { rect ->
-            val key = "${rect.left},${rect.top},${rect.right},${rect.bottom}"
-            if (!seen.add(key)) return@collectBottomRight
-            val current = best
-            if (current == null || rect.bottom > current.bottom ||
-                (rect.bottom == current.bottom && rect.right > current.right)
-            ) {
-                best = rect
+        for (root in roots) {
+            var best: Rect? = null
+            collectBottomRight(root, 0, width, height, minSize) { rect ->
+                val key = "${rect.left},${rect.top},${rect.right},${rect.bottom}"
+                if (!seen.add(key)) return@collectBottomRight
+                val current = best
+                if (current == null || rect.bottom > current.bottom ||
+                    (rect.bottom == current.bottom && rect.right > current.right)
+                ) {
+                    best = rect
+                }
             }
+            best?.let { return Point(it.centerX(), it.centerY()) }
         }
-        return best?.let { Point(it.centerX(), it.centerY()) }
+        return null
     }
 
     private fun collectBottomRight(
@@ -1815,9 +1820,7 @@ class RcAccessibilityService : AccessibilityService() {
         depth: Int
     ): Point? {
         if (node == null || depth > 60) return null
-        val label = (node.text?.toString() ?: node.contentDescription?.toString())
-            ?.trim()
-            ?.lowercase()
+        val label = labelOf(node)?.lowercase()
         if (label != null && label in labels) {
             clickableBounds(node, requireClickable = true)?.let {
                 return Point(it.centerX(), it.centerY())
