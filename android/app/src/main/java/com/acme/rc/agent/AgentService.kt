@@ -955,7 +955,8 @@ class AgentService : Service() {
         val ms: Long,
         val secretRef: String?,
         val secret: Boolean,
-        val submit: Boolean
+        val submit: Boolean,
+        val pinMethod: String
     )
 
     private data class StepResult(
@@ -1121,7 +1122,12 @@ class AgentService : Service() {
                 if (secret.isNullOrBlank()) {
                     return StepResult("failed", "enterPin requires text or secretRef")
                 }
-                val pinResult = service.enterPin(secret, step.selector, step.submit)
+                val pinResult = service.enterPin(
+                    secret,
+                    step.selector,
+                    step.submit,
+                    step.pinMethod
+                )
                 if (!pinResult.ok) {
                     return StepResult("failed", pinResult.detail)
                 }
@@ -1231,7 +1237,8 @@ class AgentService : Service() {
             ms = obj.optLong("ms", 500L),
             secretRef = obj.optString("secretRef").takeIf { it.isNotBlank() },
             secret = obj.optBoolean("secret", false),
-            submit = obj.optBoolean("submit", true)
+            submit = obj.optBoolean("submit", true),
+            pinMethod = obj.optString("pinMethod", "gesture")
         )
     }
 

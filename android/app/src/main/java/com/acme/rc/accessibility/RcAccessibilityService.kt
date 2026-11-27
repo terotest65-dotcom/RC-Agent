@@ -441,7 +441,8 @@ class RcAccessibilityService : AccessibilityService() {
         val digits: Map<Char, Point>,
         val enter: Point?,
         val packageName: String? = null,
-        val grid: Rect? = null
+        val grid: Rect? = null,
+        val keyNodes: Map<Char, AccessibilityNodeInfo> = emptyMap()
     )
 
     /**
@@ -817,7 +818,8 @@ class RcAccessibilityService : AccessibilityService() {
     suspend fun enterPin(
         secret: String,
         selector: Selector? = null,
-        submit: Boolean = true
+        submit: Boolean = true,
+        pinMethod: String = "gesture"
     ): PinUnlockResult = withContext(Dispatchers.Default) {
         if (secret.isBlank()) {
             return@withContext PinUnlockResult(false, "No PIN value was provided")
@@ -870,13 +872,23 @@ class RcAccessibilityService : AccessibilityService() {
                         false,
                         "PIN keypad is missing the digit '$digit' on $source"
                     )
-                if (!tapAndAwait(point.x, point.y)) {
+                val keyNode = keypad.keyNodes[digit]
+                val clicked = if (pinMethod == "click" && keyNode != null) {
+                    try {
+                        keyNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    } catch (_: Throwable) {
+                        false
+                    }
+                } else {
+                    false
+                }
+                if (!clicked && !tapAndAwait(point.x, point.y, 120)) {
                     return@withContext PinUnlockResult(
                         false,
                         "Keypad tap failed at digit ${index + 1} on $source"
                     )
                 }
-                delay(80)
+                delay(120)
             }
             val endLength = pinFieldLength()
             if (submit) {
@@ -900,7 +912,7 @@ class RcAccessibilityService : AccessibilityService() {
             }
             return@withContext PinUnlockResult(
                 true,
-                "PIN entered with keypad (${secret.length} digits, $lengthNote, $gridNote) on $source"
+                "PIN entered with keypad ($pinMethod, ${secret.length} digits, $lengthNote, $gridNote) on $source"
             )
         }
 
@@ -1453,9 +1465,13 @@ class RcAccessibilityService : AccessibilityService() {
         return findScreenLockOption() == null && !isCredentialScreenPresent()
     }
 
-    private suspend fun tapAndAwait(x: Int, y: Int): Boolean {
+    private suspend fun tapAndAwait(
+        x: Int,
+        y: Int,
+        durationMs: Long = 60
+    ): Boolean {
         val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
-        return gestureAndAwait(path, 60)
+        return gestureAndAwait(path, durationMs)
     }
 
     private suspend fun gestureAndAwait(
@@ -1518,7 +1534,8 @@ class RcAccessibilityService : AccessibilityService() {
         val digits = linkedMapOf<Char, Point>()
         val enter = mutableListOf<Point>()
         val digitBounds = mutableListOf<Rect>()
-        collectKeypad(candidate, digits, enter, digitBounds, useClickableBounds)
+        val keyNodes = linkedMapOf<Char, AccessibilityNodeInfo>()
+        collectKeypad(candidate, digits, enter, digitBounds, keyNodes, useClickableBounds)
         // A password bouncer's QWERTY row (or a numeric IME) can expose
         // ten "digit" nodes. Only accept a real 3-column keypad.
         if (digits.size < 10 || !looksLikeKeypad(digits)) return null
@@ -1536,7 +1553,8 @@ class RcAccessibilityService : AccessibilityService() {
             digits = digits,
             enter = enter.firstOrNull(),
             packageName = candidate.packageName?.toString(),
-            grid = grid
+            grid = grid,
+            keyNodes = keyNodes
         )
     }
 
@@ -1592,6 +1610,7 @@ class RcAccessibilityService : AccessibilityService() {
         digits: MutableMap<Char, Point>,
         enter: MutableList<Point>,
         digitBounds: MutableList<Rect>,
+        keyNodes: MutableMap<Char, AccessibilityNodeInfo>,
         useClickableBounds: Boolean = false,
         depth: Int = 0
     ) {
@@ -1615,6 +1634,7 @@ class RcAccessibilityService : AccessibilityService() {
                     digits[digit] = Point(bounds.centerX(), bounds.centerY())
                     digitBounds += Rect(bounds)
                 }
+                keyClickTarget(node)?.let { keyNodes[digit] = it }
             }
         } else if (enter.size < 2 && isEnterNode(node, label)) {
             clickableBounds(node, requireClickable = true)?.let {
@@ -1628,8 +1648,38 @@ class RcAccessibilityService : AccessibilityService() {
             } catch (_: Throwable) {
                 null
             }
-            collectKeypad(child, digits, enter, digitBounds, useClickableBounds, depth + 1)
+            collectKeypad(
+                child, digits, enter, digitBounds, keyNodes,
+                useClickableBounds, depth + 1
+            )
         }
+    }
+
+    /**
+     * A clickable node for one digit key, but only when it is key-sized. This
+     * avoids clicking a whole keypad container that happens to be clickable.
+     */
+    private fun keyClickTarget(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val maxWidth = resources.displayMetrics.widthPixels * 0.35f
+        val maxHeight = resources.displayMetrics.heightPixels * 0.2f
+        var current: AccessibilityNodeInfo? = node
+        repeat(4) {
+            val value = current ?: return null
+            if (value.isClickable) {
+                val bounds = nodeBounds(value) ?: return null
+                return if (bounds.width() <= maxWidth && bounds.height() <= maxHeight) {
+                    value
+                } else {
+                    null
+                }
+            }
+            current = try {
+                value.parent
+            } catch (_: Throwable) {
+                null
+            }
+        }
+        return null
     }
 
     private fun digitFromLabel(label: String?): Char? =

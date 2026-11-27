@@ -244,6 +244,7 @@ export interface MacroStep {
   secretRef?: string
   secret?: boolean
   submit?: boolean
+  pinMethod?: 'gesture' | 'click'
 }
 
 export interface MacroParam {
