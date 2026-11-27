@@ -124,6 +124,7 @@ class AgentService : Service() {
     private var currentSessionId: String? = null
     private var recordAppPackage: String? = null
     private var appEntered = false
+    private val recordLeaveRunnable = Runnable { maybeStopAfterLeaving() }
 
     private var reconnectAttempt = 0
     private var reconnectJob: Job? = null
@@ -156,6 +157,7 @@ class AgentService : Service() {
 
         if (intent?.action == ACTION_STOP) {
             shouldReconnect = false
+            mainHandler.removeCallbacks(recordLeaveRunnable)
             recording = false
             stopSelf()
             return START_NOT_STICKY
@@ -180,6 +182,7 @@ class AgentService : Service() {
 
     override fun onDestroy() {
         shouldReconnect = false
+        mainHandler.removeCallbacks(recordLeaveRunnable)
         recording = false
         instance = null
         currentSessionId = null
@@ -362,6 +365,7 @@ class AgentService : Service() {
                 return
             }
             "startRecording" -> {
+                mainHandler.removeCallbacks(recordLeaveRunnable)
                 recording = true
                 currentSessionId = msg.optString("sessionId").takeIf { it.isNotBlank() }
                 recordAppPackage = msg.optString("appPackage").takeIf { it.isNotBlank() }
@@ -378,6 +382,7 @@ class AgentService : Service() {
                 return
             }
             "stopRecording" -> {
+                mainHandler.removeCallbacks(recordLeaveRunnable)
                 val sessionId = currentSessionId
                 recording = false
                 currentSessionId = null
@@ -1411,14 +1416,16 @@ class AgentService : Service() {
         if (target != null && app != null) {
             if (relatedPackage(app, target)) {
                 appEntered = true
+                mainHandler.removeCallbacks(recordLeaveRunnable)
             } else if (
                 type == "window" &&
                 appEntered &&
-                !ignoredForStop(app)
+                !ignoredForStop(app, event.className?.toString())
             ) {
-                // The user left the app (home, another app, close): save and stop.
-                autoStopRecording()
-                return
+                // A biometric or permission prompt is often a separate window.
+                // Wait briefly so a prompt that returns to the app does not end
+                // the recording.
+                scheduleRecordLeaveCheck()
             }
         }
 
@@ -1551,20 +1558,50 @@ class AgentService : Service() {
         return false
     }
 
-    private fun ignoredForStop(pkg: String): Boolean {
+    private fun ignoredForStop(pkg: String, activity: String? = null): Boolean {
         val lower = pkg.lowercase()
+        val act = activity.orEmpty().lowercase()
+        if (act.contains("biometric") || act.contains("fingerprint") ||
+            act.contains("credential") || act.contains("confirmdevice") ||
+            act.contains("keyguard") || act.contains("lockscreen")
+        ) {
+            return true
+        }
         return lower.contains("inputmethod") ||
             lower.contains("keyboard") ||
-            lower.contains("permissioncontroller") ||
+            lower.contains("permission") ||
             lower.contains("documentsui") ||
             lower.contains("intentresolver") ||
-            pkg == "com.android.systemui" ||
+            lower.contains("systemui") ||
+            lower.contains("biometric") ||
+            lower.contains("fingerprint") ||
+            lower.contains("faceunlock") ||
+            lower.contains("keyguard") ||
+            lower.contains("credential") ||
+            lower.contains("securitycenter") ||
+            lower.contains("google.android.gms") ||
             pkg == "android" ||
             pkg == "com.acme.rc"
     }
 
+    private fun scheduleRecordLeaveCheck() {
+        mainHandler.removeCallbacks(recordLeaveRunnable)
+        mainHandler.postDelayed(recordLeaveRunnable, 2_500)
+    }
+
+    private fun maybeStopAfterLeaving() {
+        if (!recording) return
+        val target = recordAppPackage ?: return
+        val service = RcAccessibilityService.instance ?: return
+        val currentPackage = service.currentPackage ?: return
+        if (relatedPackage(currentPackage, target)) return
+        if (ignoredForStop(currentPackage, service.currentActivity)) return
+        autoStopRecording()
+    }
+
     private fun autoStopRecording() {
         if (!recording) return
+        mainHandler.removeCallbacks(recordLeaveRunnable)
         val sessionId = currentSessionId
         recording = false
         currentSessionId = null
