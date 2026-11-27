@@ -88,10 +88,13 @@ data class Selector(
     val contains: String? = null,
     val desc: String? = null,
     val descContains: String? = null,
+    val hint: String? = null,
+    val hintContains: String? = null,
+    val focused: Boolean? = null,
     val className: String? = null,
     /** Pick the Nth match in tree order, 1-based. Defaults to the first. */
     val index: Int = 1,
-    /** Match text, contains, desc, and descContains without regard to case. */
+    /** Match text, contains, desc, descContains, hint, and hintContains without regard to case. */
     val ignoreCase: Boolean = false
 )
 

@@ -41,7 +41,7 @@ const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
-const BUILTIN_VERSION = 6
+const BUILTIN_VERSION = 7
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -179,6 +179,85 @@ const BUILTIN_MACROS: Macro[] = [
       },
       { op: 'screenshot', label: 'balance' },
       { op: 'assert', selector: { contains: 'Balance' } }
+    ]
+  },
+  {
+    id: 'builtin-phonepe-pay',
+    name: 'PhonePe — pay a UPI ID',
+    appPackage: 'com.phonepe.app',
+    maxAmount: 100,
+    params: {
+      upiId: { type: 'string', required: true },
+      amount: { type: 'number', required: true, default: 1 },
+      nickname: { type: 'string', required: false, default: 'Payee' }
+    },
+    steps: [
+      { op: 'launch', package: 'com.phonepe.app' },
+      { op: 'waitForIdle' },
+      { op: 'appUnlock', package: 'com.phonepe.app' },
+      { op: 'tapIfExists', selector: { desc: 'Back' } },
+      { op: 'tapIfExists', selector: { text: 'Home' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'To Mobile Number' },
+        timeoutMs: 15000
+      },
+      { op: 'tap', selector: { contains: 'To Mobile Number' } },
+      { op: 'tapIfExists', selector: { hintContains: 'UPI' } },
+      {
+        op: 'waitFor',
+        selector: { focused: true },
+        timeoutMs: 8000
+      },
+      { op: 'setText', selector: { focused: true }, text: '{{upiId}}' },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Verify & Send Money' },
+        timeoutMs: 12000
+      },
+      { op: 'tap', selector: { contains: 'Verify & Send Money' } },
+      {
+        op: 'waitFor',
+        selector: { contains: 'PROCEED' },
+        timeoutMs: 6000,
+        optional: true
+      },
+      {
+        op: 'setText',
+        selector: { hintContains: 'Nickname' },
+        text: '{{nickname}}',
+        optional: true
+      },
+      { op: 'tapIfExists', selector: { contains: 'PROCEED' } },
+      {
+        op: 'waitFor',
+        selector: { hintContains: 'Amount' },
+        timeoutMs: 12000
+      },
+      { op: 'tap', selector: { hintContains: 'Amount' } },
+      { op: 'setText', selector: { focused: true }, text: '{{amount}}' },
+      {
+        op: 'waitFor',
+        selector: { contains: 'PAY', ignoreCase: true },
+        timeoutMs: 8000
+      },
+      { op: 'tap', selector: { contains: 'PAY', ignoreCase: true } },
+      {
+        op: 'enterPin',
+        secretRef: 'phonepe-upi-pin',
+        submit: true,
+        pinMethod: 'click'
+      },
+      {
+        op: 'waitFor',
+        selector: { contains: 'successful', ignoreCase: true },
+        timeoutMs: 25000
+      },
+      { op: 'screenshot', label: 'payment' },
+      {
+        op: 'assert',
+        selector: { contains: 'successful', ignoreCase: true }
+      }
     ]
   },
   {
@@ -672,6 +751,7 @@ function macroFingerprint(macro: Macro): string {
         name: macro.name,
         appPackage: macro.appPackage ?? '',
         params: macro.params ?? {},
+        maxAmount: macro.maxAmount ?? null,
         steps: macro.steps
       })
     )
@@ -1333,6 +1413,22 @@ wss.on('connection', (ws, req) => {
               params
             )
             return
+          }
+
+          if (macro.maxAmount != null) {
+            const amount = Number(params.amount)
+            let message: string | null = null
+            if (!Number.isFinite(amount) || amount <= 0) {
+              message = 'amount must be a positive number'
+            } else if (amount > macro.maxAmount) {
+              message =
+                `amount ₹${amount} exceeds the macro limit of ₹${macro.maxAmount}`
+            }
+            if (message) {
+              fail(message)
+              failRun(target.id, macro.id, macro.name, message, params)
+              return
+            }
           }
 
           let resolvedMacro: Macro

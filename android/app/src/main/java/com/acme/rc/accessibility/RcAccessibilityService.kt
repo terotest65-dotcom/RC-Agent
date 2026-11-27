@@ -2138,8 +2138,11 @@ class RcAccessibilityService : AccessibilityService() {
     private fun matches(node: AccessibilityNodeInfo, selector: Selector): Boolean {
         val hasAny = !selector.viewId.isNullOrBlank() || !selector.text.isNullOrBlank() ||
             !selector.contains.isNullOrBlank() || !selector.desc.isNullOrBlank() ||
-            !selector.descContains.isNullOrBlank() || !selector.className.isNullOrBlank()
+            !selector.descContains.isNullOrBlank() || !selector.hint.isNullOrBlank() ||
+            !selector.hintContains.isNullOrBlank() || selector.focused != null ||
+            !selector.className.isNullOrBlank()
         if (!hasAny) return false
+        if (selector.focused != null && node.isFocused != selector.focused) return false
         if (!selector.viewId.isNullOrBlank() &&
             node.viewIdResourceName != selector.viewId
         ) return false
@@ -2158,6 +2161,13 @@ class RcAccessibilityService : AccessibilityService() {
         ) return false
         if (!selector.descContains.isNullOrBlank() &&
             !description.contains(fold(normalize(selector.descContains)))
+        ) return false
+        val hint = fold(normalize(node.hintText?.toString()))
+        if (!selector.hint.isNullOrBlank() &&
+            hint != fold(normalize(selector.hint))
+        ) return false
+        if (!selector.hintContains.isNullOrBlank() &&
+            !hint.contains(fold(normalize(selector.hintContains)))
         ) return false
         if (!selector.className.isNullOrBlank() &&
             node.className?.toString() != selector.className

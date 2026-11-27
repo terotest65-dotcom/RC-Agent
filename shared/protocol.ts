@@ -206,10 +206,13 @@ export interface Selector {
   contains?: string
   desc?: string
   descContains?: string
+  hint?: string
+  hintContains?: string
+  focused?: boolean
   className?: string
   /** Pick the Nth match in tree order, 1-based. Defaults to the first. */
   index?: number | string
-  /** Match text, contains, desc, and descContains without regard to case. */
+  /** Match text, contains, desc, descContains, hint, and hintContains without regard to case. */
   ignoreCase?: boolean
 }
 
@@ -259,6 +262,8 @@ export interface Macro {
   appPackage?: string
   params?: Record<string, MacroParam>
   steps: MacroStep[]
+  /** Reject a run whose {{amount}} param exceeds this value. */
+  maxAmount?: number
   createdAt?: number
   updatedAt?: number
 }

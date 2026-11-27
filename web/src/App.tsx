@@ -2971,6 +2971,11 @@ function MacroRow({
         </div>
         <div className="macro-meta">
           {macro.appPackage ?? 'any app'} <span>/</span> {macro.id}
+          {macro.maxAmount != null && (
+            <>
+              {' '}<span>/</span> max ₹{macro.maxAmount}
+            </>
+          )}
         </div>
         {keys.length > 0 && (
           <div className="params">
