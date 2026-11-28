@@ -998,7 +998,9 @@ class AgentService : Service() {
         val secret: Boolean,
         val submit: Boolean,
         val pinMethod: String,
-        val requireActivity: String?
+        val requireActivity: String?,
+        val relativeX: Double,
+        val relativeY: Double
     )
 
     private data class StepResult(
@@ -1192,6 +1194,14 @@ class AgentService : Service() {
                 }
                 delay(600)
             }
+            "tapRelative" -> {
+                val selector = step.selector
+                    ?: return StepResult("failed", "tapRelative requires selector")
+                if (!service.tapRelative(selector, step.relativeX, step.relativeY)) {
+                    return StepResult("failed", "relative tap failed")
+                }
+                delay(600)
+            }
             "setText" -> {
                 val selector = step.selector
                     ?: return StepResult("failed", "setText requires selector")
@@ -1357,7 +1367,9 @@ class AgentService : Service() {
             requireActivity = resolve(
                 obj.optString("requireActivity").takeIf { it.isNotBlank() },
                 params
-            )
+            ),
+            relativeX = obj.optDouble("relativeX", 0.0),
+            relativeY = obj.optDouble("relativeY", 0.0)
         )
     }
 

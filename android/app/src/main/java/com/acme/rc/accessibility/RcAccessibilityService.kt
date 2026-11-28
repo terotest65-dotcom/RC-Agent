@@ -373,6 +373,26 @@ class RcAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * Tap a point offset from a selector's centre by fractions of the screen
+     * width and height. Used for the bank-account selector left of Pay.
+     */
+    fun tapRelative(selector: Selector, dx: Double, dy: Double): Boolean {
+        val node = findNode(selector) ?: return false
+        val bounds = Rect()
+        return try {
+            node.getBoundsInScreen(bounds)
+            if (bounds.isEmpty) return false
+            val (width, height) = displaySize()
+            tapAt(
+                (bounds.centerX() + dx * width).toInt(),
+                (bounds.centerY() + dy * height).toInt()
+            )
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     fun setText(element: Element, text: String): Boolean {
         val root = try {
             getRootInActiveWindow(ROOT_FLAGS)

@@ -41,7 +41,7 @@ const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
-const BUILTIN_VERSION = 13
+const BUILTIN_VERSION = 14
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -190,6 +190,7 @@ const BUILTIN_MACROS: Macro[] = [
     params: {
       upiId: { type: 'string', required: true },
       amount: { type: 'number', required: true, default: 1 },
+      bank: { type: 'number', required: true, default: 1 },
       nickname: { type: 'string', required: false, default: 'Payee' }
     },
     steps: [
@@ -253,10 +254,34 @@ const BUILTIN_MACROS: Macro[] = [
       { op: 'setText', selector: { focused: true }, text: '{{amount}}' },
       {
         op: 'waitFor',
-        selector: { contains: 'PAY', ignoreCase: true },
+        selector: { text: 'PAY', ignoreCase: true },
         timeoutMs: 8000
       },
-      { op: 'tap', selector: { contains: 'PAY', ignoreCase: true } },
+      {
+        op: 'tapRelative',
+        selector: { text: 'PAY', ignoreCase: true },
+        relativeX: -0.22,
+        relativeY: 0
+      },
+      {
+        op: 'waitFor',
+        selector: { contains: 'Transfer from' },
+        timeoutMs: 8000
+      },
+      {
+        op: 'tap',
+        selector: { contains: ' - ', index: '{{bank}}' }
+      },
+      {
+        op: 'tap',
+        selector: { contains: 'CONTINUE', ignoreCase: true }
+      },
+      {
+        op: 'waitFor',
+        selector: { text: 'PAY', ignoreCase: true },
+        timeoutMs: 8000
+      },
+      { op: 'tap', selector: { text: 'PAY', ignoreCase: true } },
       {
         op: 'enterPin',
         secretRef: 'phonepe-upi-pin',
@@ -493,7 +518,8 @@ const BUILTIN_MACROS: Macro[] = [
     maxAmount: 100,
     params: {
       upiId: { type: 'string', required: true },
-      amount: { type: 'number', required: true, default: 1 }
+      amount: { type: 'number', required: true, default: 1 },
+      bank: { type: 'number', required: true, default: 1 }
     },
     steps: [
       { op: 'launch', package: 'net.one97.paytm' },
@@ -551,6 +577,10 @@ const BUILTIN_MACROS: Macro[] = [
         op: 'waitFor',
         selector: { contains: 'Pay Securely' },
         timeoutMs: 12000
+      },
+      {
+        op: 'tapIfExists',
+        selector: { contains: 'Bank -', ignoreCase: true, index: '{{bank}}' }
       },
       { op: 'tap', selector: { contains: 'Pay Securely' } },
       {

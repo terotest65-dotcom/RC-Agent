@@ -447,6 +447,7 @@ class OtpNotificationListener : NotificationListenerService() {
 | `tap` | Click a selector |
 | `tapIfExists` | Optional click (ads, permission dialogs, "Skip") |
 | `tapFirst` | Click the first selector that appears, e.g. saved vs new payee |
+| `tapRelative` | Tap a point offset from a selector, e.g. the bank selector left of Pay |
 | `longPress` | Long click |
 | `setText` | Focus + set text; `secret: true` redacts |
 | `enterPin` | Enter a PIN/password into a labeled app keypad or text field; use `secretRef` |

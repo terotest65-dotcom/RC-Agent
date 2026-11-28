@@ -239,6 +239,7 @@ export type MacroOp =
   | 'tap'
   | 'tapIfExists'
   | 'tapFirst'
+  | 'tapRelative'
   | 'setText'
   | 'enterPin'
   | 'enterDigits'
@@ -266,6 +267,8 @@ export interface MacroStep {
   submit?: boolean
   pinMethod?: 'gesture' | 'click'
   requireActivity?: string
+  relativeX?: number
+  relativeY?: number
 }
 
 export interface MacroParam {
