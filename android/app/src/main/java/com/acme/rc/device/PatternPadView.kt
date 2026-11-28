@@ -41,35 +41,35 @@ class PatternPadView @JvmOverloads constructor(
     private val backgroundRect = RectF()
 
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFF8FAFC.toInt()
+        color = 0xFF111722.toInt()
         style = Paint.Style.FILL
     }
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF98A2B3.toInt()
+        color = 0xFF5A6577.toInt()
         style = Paint.Style.STROKE
         strokeWidth = dp(2f)
     }
     private val innerDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF98A2B3.toInt()
+        color = 0xFF5A6577.toInt()
         style = Paint.Style.FILL
     }
     private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF2563EB.toInt()
+        color = 0xFF4C8DFF.toInt()
         style = Paint.Style.FILL
     }
     private val selectedHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0x332563EB.toInt()
+        color = 0x334C8DFF.toInt()
         style = Paint.Style.FILL
     }
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF2563EB.toInt()
+        color = 0xFF4C8DFF.toInt()
         style = Paint.Style.STROKE
         strokeWidth = lineWidth
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
     private val dragPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0x992563EB.toInt()
+        color = 0x994C8DFF.toInt()
         style = Paint.Style.STROKE
         strokeWidth = lineWidth
         strokeCap = Paint.Cap.ROUND

@@ -20,9 +20,9 @@ import com.acme.rc.agent.AgentService
 /**
  * Local, explicit enrollment screen for the device unlock credential.
  *
- * The detected type is shown in the centre; the other types stay available as
- * faint links at the bottom. The credential is stored with the same Keystore
- * key as the panel flow and never leaves the device.
+ * The detected type is shown in the centre; PIN, pattern, and password are
+ * available as a segmented switcher above the input. The credential is stored
+ * with the same Keystore key as the panel flow and never leaves the device.
  */
 class EnrollUnlockActivity : Activity() {
 
@@ -167,17 +167,14 @@ class EnrollUnlockActivity : Activity() {
             typePattern to LockType.PATTERN,
             typePassword to LockType.PASSWORD
         )
+        val activeColor = getColor(R.color.enroll_text)
+        val idleColor = getColor(R.color.enroll_muted)
         for ((view, type) in chips) {
             val active = type == selectedType
-            view.setTextColor(
-                if (active) 0xFF2563EB.toInt() else 0xFF667085.toInt()
-            )
+            view.setTextColor(if (active) activeColor else idleColor)
             view.setTypeface(null, if (active) Typeface.BOLD else Typeface.NORMAL)
-            view.alpha = when {
-                selectedType == LockType.UNKNOWN -> 0.82f
-                active -> 1f
-                else -> 0.52f
-            }
+            view.isSelected = active
+            view.alpha = if (selectedType == LockType.UNKNOWN) 0.9f else 1f
         }
     }
 

@@ -64,7 +64,7 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:label="@string/enroll_title"
-            android:theme="@style/Theme.RcAgent"
+            android:theme="@style/Theme.RcAgent.Enroll"
             android:windowSoftInputMode="adjustResize" />
 
         <service

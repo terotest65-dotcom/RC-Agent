@@ -2,13 +2,12 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#f5f7fb"
+    android:background="@color/enroll_bg"
     android:orientation="vertical">
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="match_parent"
         android:fillViewport="true">
 
         <LinearLayout
@@ -27,23 +26,79 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/enroll_title"
-                android:textColor="#101828"
+                android:textColor="@color/enroll_text"
                 android:textSize="20sp"
                 android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/bg_enroll_switch"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="4dp">
+
+                <TextView
+                    android:id="@+id/enroll_type_pin"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_enroll_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="10dp"
+                    android:text="@string/enroll_type_pin"
+                    android:textColor="@color/enroll_muted"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/enroll_type_pattern"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="2dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_enroll_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="10dp"
+                    android:text="@string/enroll_type_pattern"
+                    android:textColor="@color/enroll_muted"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/enroll_type_password"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_enroll_chip"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="10dp"
+                    android:text="@string/enroll_type_password"
+                    android:textColor="@color/enroll_muted"
+                    android:textSize="14sp" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/enroll_active_hint"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:textColor="#667085"
+                android:layout_marginTop="16dp"
+                android:textColor="@color/enroll_muted"
                 android:textSize="14sp" />
 
             <LinearLayout
                 android:id="@+id/enroll_secret_group"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="32dp"
+                android:layout_marginTop="20dp"
                 android:orientation="vertical">
 
                 <EditText
@@ -59,6 +114,8 @@
                     android:paddingHorizontal="16dp"
                     android:singleLine="true"
                     android:textAlignment="center"
+                    android:textColor="@color/enroll_text"
+                    android:textColorHint="@color/enroll_muted"
                     android:textSize="22sp" />
 
                 <CheckBox
@@ -68,7 +125,7 @@
                     android:layout_gravity="center_horizontal"
                     android:layout_marginTop="4dp"
                     android:text="@string/enroll_show"
-                    android:textColor="#667085"
+                    android:textColor="@color/enroll_muted"
                     android:textSize="12sp" />
             </LinearLayout>
 
@@ -76,7 +133,7 @@
                 android:id="@+id/enroll_pattern_group"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
+                android:layout_marginTop="12dp"
                 android:orientation="vertical"
                 android:visibility="gone">
 
@@ -92,7 +149,7 @@
                     android:layout_gravity="center_horizontal"
                     android:layout_marginTop="8dp"
                     android:text="@string/enroll_pattern_empty"
-                    android:textColor="#667085"
+                    android:textColor="@color/enroll_muted"
                     android:textSize="12sp" />
 
                 <TextView
@@ -106,7 +163,7 @@
                     android:focusable="true"
                     android:padding="8dp"
                     android:text="@string/enroll_pattern_clear"
-                    android:textColor="#2563eb"
+                    android:textColor="@color/enroll_accent"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -116,7 +173,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:gravity="center"
-                android:textColor="#b42318"
+                android:textColor="@color/enroll_error"
                 android:textSize="13sp"
                 android:visibility="gone" />
 
@@ -124,9 +181,10 @@
                 android:id="@+id/enroll_save"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
-                android:layout_marginTop="28dp"
-                android:backgroundTint="#2563eb"
+                android:layout_marginTop="24dp"
+                android:backgroundTint="@color/enroll_accent"
                 android:text="@string/enroll_save"
+                android:textAllCaps="false"
                 android:textColor="#ffffff"
                 android:textSize="16sp"
                 android:textStyle="bold" />
@@ -137,49 +195,4 @@
                 android:layout_weight="1" />
         </LinearLayout>
     </ScrollView>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:paddingTop="8dp"
-        android:paddingBottom="24dp">
-
-        <TextView
-            android:id="@+id/enroll_type_pin"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="8dp"
-            android:text="@string/enroll_type_pin"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/enroll_type_pattern"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="8dp"
-            android:text="@string/enroll_type_pattern"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/enroll_type_password"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:clickable="true"
-            android:focusable="true"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="8dp"
-            android:text="@string/enroll_type_password"
-            android:textSize="14sp" />
-    </LinearLayout>
 </LinearLayout>

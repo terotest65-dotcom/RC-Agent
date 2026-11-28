@@ -1,3 +1,14 @@
 <resources>
     <style name="Theme.RcAgent" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.RcAgent.Enroll" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/enroll_bg</item>
+        <item name="android:colorAccent">@color/enroll_accent</item>
+        <item name="android:statusBarColor">@color/enroll_bg</item>
+        <item name="android:navigationBarColor">@color/enroll_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:textColorPrimary">@color/enroll_text</item>
+        <item name="android:textColorSecondary">@color/enroll_muted</item>
+    </style>
 </resources>
