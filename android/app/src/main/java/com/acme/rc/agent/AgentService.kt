@@ -1000,7 +1000,14 @@ class AgentService : Service() {
         val pinMethod: String,
         val requireActivity: String?,
         val relativeX: Double,
-        val relativeY: Double
+        val relativeY: Double,
+        val condition: StepCondition?
+    )
+
+    private data class StepCondition(
+        val param: String,
+        val equals: String?,
+        val notEquals: String?
     )
 
     private data class StepResult(
@@ -1107,6 +1114,7 @@ class AgentService : Service() {
     }
 
     private suspend fun executeStep(step: Step, params: JSONObject): StepResult {
+        if (!conditionMet(step.condition, params)) return StepResult("skipped")
         val service = service()
         var stepDetail: String? = null
 
@@ -1290,6 +1298,14 @@ class AgentService : Service() {
         return StepResult("ok", detail = stepDetail)
     }
 
+    private fun conditionMet(condition: StepCondition?, params: JSONObject): Boolean {
+        if (condition == null) return true
+        val value = params.optString(condition.param, "")
+        if (condition.equals != null && value != condition.equals) return false
+        if (condition.notEquals != null && value == condition.notEquals) return false
+        return true
+    }
+
     private suspend fun waitForSelector(
         service: RcAccessibilityService,
         selector: Selector,
@@ -1369,7 +1385,19 @@ class AgentService : Service() {
                 params
             ),
             relativeX = obj.optDouble("relativeX", 0.0),
-            relativeY = obj.optDouble("relativeY", 0.0)
+            relativeY = obj.optDouble("relativeY", 0.0),
+            condition = obj.optJSONObject("when")?.let { condition ->
+                val param = condition.optString("param").takeIf { it.isNotBlank() }
+                if (param == null) {
+                    null
+                } else {
+                    StepCondition(
+                        param = param,
+                        equals = condition.optString("equals").takeIf { it.isNotBlank() },
+                        notEquals = condition.optString("notEquals").takeIf { it.isNotBlank() }
+                    )
+                }
+            }
         )
     }
 

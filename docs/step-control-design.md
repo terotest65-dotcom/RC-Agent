@@ -463,6 +463,16 @@ class OtpNotificationListener : NotificationListenerService() {
 
 Add `"optional": true` to a step to turn its failure into `skipped` and continue. Use it for best-effort waits, onboarding dialogs, and app-specific result labels that may not exist in every version.
 
+A step can also be conditional on a run parameter:
+
+```json
+{ "op": "tapRelative", "selector": { "text": "PAY" },
+  "relativeX": -0.22, "relativeY": 0,
+  "when": { "param": "bank", "notEquals": "1" } }
+```
+
+`when` supports `equals` and `notEquals`; a false condition marks the step `skipped`. Use it to keep the default path unchanged while adding an optional bank-selection branch.
+
 **App-level locks.** App PIN/password screens (banking apps, third-party app
 lockers) are ordinary app windows, not the keyguard, so the system lock rules do
 not apply. Use `enterPin` with a `secretRef` from the Secrets tab:

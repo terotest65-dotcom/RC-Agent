@@ -269,6 +269,8 @@ export interface MacroStep {
   requireActivity?: string
   relativeX?: number
   relativeY?: number
+  /** Skip this step unless the run param matches. */
+  when?: { param: string; equals?: string; notEquals?: string }
 }
 
 export interface MacroParam {

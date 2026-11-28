@@ -41,7 +41,7 @@ const WEB_DIST = process.env.WEB_DIST ?? join(here, '../../web/dist')
 const DATA_DIR = process.env.DATA_DIR ?? join(here, '../data')
 const MACROS_FILE = join(DATA_DIR, 'macros.json')
 const MACROS_SEED_FILE = join(DATA_DIR, 'macros.seed')
-const BUILTIN_VERSION = 14
+const BUILTIN_VERSION = 15
 const SECRETS_FILE = join(DATA_DIR, 'secrets.json')
 const PORT = Number(process.env.PORT ?? 8787)
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -261,25 +261,30 @@ const BUILTIN_MACROS: Macro[] = [
         op: 'tapRelative',
         selector: { text: 'PAY', ignoreCase: true },
         relativeX: -0.22,
-        relativeY: 0
+        relativeY: 0,
+        when: { param: 'bank', notEquals: '1' }
       },
       {
         op: 'waitFor',
         selector: { contains: 'Transfer from' },
-        timeoutMs: 8000
+        timeoutMs: 8000,
+        when: { param: 'bank', notEquals: '1' }
       },
       {
         op: 'tap',
-        selector: { contains: ' - ', index: '{{bank}}' }
+        selector: { contains: ' - ', index: '{{bank}}' },
+        when: { param: 'bank', notEquals: '1' }
       },
       {
         op: 'tap',
-        selector: { contains: 'CONTINUE', ignoreCase: true }
+        selector: { contains: 'CONTINUE', ignoreCase: true },
+        when: { param: 'bank', notEquals: '1' }
       },
       {
         op: 'waitFor',
         selector: { text: 'PAY', ignoreCase: true },
-        timeoutMs: 8000
+        timeoutMs: 8000,
+        when: { param: 'bank', notEquals: '1' }
       },
       { op: 'tap', selector: { text: 'PAY', ignoreCase: true } },
       {
@@ -580,7 +585,8 @@ const BUILTIN_MACROS: Macro[] = [
       },
       {
         op: 'tapIfExists',
-        selector: { contains: 'Bank -', ignoreCase: true, index: '{{bank}}' }
+        selector: { contains: 'Bank -', ignoreCase: true, index: '{{bank}}' },
+        when: { param: 'bank', notEquals: '1' }
       },
       { op: 'tap', selector: { contains: 'Pay Securely' } },
       {
